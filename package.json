@@ -2,7 +2,7 @@
 	"name": "cxx-compiler-explorer",
 	"displayName": "C/C++ Compiler explorer",
 	"description": "Show Preprocessor/Disassembly output to source relations",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/harikrishnan94/cxx-compiler-explorer"
@@ -15,7 +15,8 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCommand:compilerexplorer.disassOutput"
+		"onCommand:compilerexplorer.disassOutput",
+		"onCommand:compilerexplorer.disassOutputWithExtraArgs"
 	],
 	"main": "./out/extension",
 	"contributes": {
@@ -23,6 +24,10 @@
 			{
 				"command": "compilerexplorer.disassOutput",
 				"title": "C++ Compiler Explorer: Disassemble file"
+			},
+			{
+				"command": "compilerexplorer.disassOutputWithExtraArgs",
+				"title": "C++ Compiler Explorer: Disassemble file with extra args"
 			}
 		],
 		"configuration": [

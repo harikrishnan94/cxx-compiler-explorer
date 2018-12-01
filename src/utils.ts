@@ -93,3 +93,25 @@ export function resolvePath(path: string): string {
 	// normalize a path, reducing '..' and '.' parts
 	return Path.normalize(resolvedPath);
 }
+
+export function arrayEquals<T>(a: T[], b: T[]) {
+	if (a === b) {
+		return true;
+	}
+
+	if (a == undefined || b == undefined) {
+		return false;
+	}
+
+	if (a.length !== b.length) {
+		return false;
+	}
+
+	for (const aElem of a) {
+		if (b.indexOf(aElem) == -1) {
+			return false;
+		}
+	}
+
+	return true;
+}

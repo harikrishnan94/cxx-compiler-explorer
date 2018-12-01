@@ -3,7 +3,7 @@
 import { window, workspace, Uri } from "vscode";
 import * as fs from "fs";
 import * as Path from "path";
-import { resolvePath } from "./utils";
+import { resolvePath, arrayEquals } from "./utils";
 import * as child_process from "child_process";
 import {
 	JsonObject,
@@ -103,6 +103,7 @@ class CompileInfo {
 	srcUri: Uri;
 	command: string;
 	compilationDirectory: string;
+	extraArgs: string[] = [];
 
 	constructor(
 		uri: Uri,
@@ -114,6 +115,10 @@ class CompileInfo {
 		this.srcUri = srcUri;
 		this.command = command;
 		this.compilationDirectory = compilationDirectory;
+	}
+
+	extraArgsChanged(extraArgs: string[]) {
+		return !arrayEquals(extraArgs, this.extraArgs);
 	}
 }
 
@@ -127,12 +132,21 @@ export class CompileCommands {
 		workspace.getConfiguration("compilerexplorer").get<string>("outDir") +
 			"/"
 	);
+	private static extraArgs: string[] = [];
+
+	static setExtraCompileArgs(extraArgs: string[]) {
+		this.extraArgs = extraArgs;
+	}
+
+	static getExtraCompileArgs() {
+		return this.extraArgs.join(" ");
+	}
 
 	static compile(uri: Uri) {
 		const compileInfo = this.getCompileInfo(uri);
 
 		if (compileInfo !== undefined) {
-			if (this.needCompilation(compileInfo.srcUri)) {
+			if (this.needCompilation(compileInfo)) {
 				return this.execCompileCommand(compileInfo);
 			} else {
 				return true;
@@ -219,7 +233,8 @@ export class CompileCommands {
 	}
 
 	private static execCompileCommand(compileInfo: CompileInfo) {
-		const childErrBuf = child_process.execSync(compileInfo.command, {
+		const command = compileInfo.command + this.extraArgs.join(" ");
+		const childErrBuf = child_process.execSync(command, {
 			cwd: compileInfo.compilationDirectory
 		});
 
@@ -233,20 +248,26 @@ export class CompileCommands {
 			return false;
 		}
 
-		this.updateCompileTimestamp(compileInfo.srcUri);
+		this.updateCompileInfo(compileInfo);
 
 		return true;
 	}
 
-	private static needCompilation(uri: Uri) {
-		const compileTimestamp = this.compileTimestamps.get(uri.path);
-		const stat = fs.statSync(uri.path);
+	private static needCompilation(compileInfo: CompileInfo) {
+		const srcUri = compileInfo.srcUri;
+		const compileTimestamp = this.compileTimestamps.get(srcUri.path);
+		const stat = fs.statSync(srcUri.path);
 
-		return !compileTimestamp || stat.mtime > compileTimestamp;
+		return (
+			compileInfo.extraArgsChanged(this.extraArgs) ||
+			!compileTimestamp ||
+			stat.mtime > compileTimestamp
+		);
 	}
 
-	private static updateCompileTimestamp(uri: Uri) {
-		this.compileTimestamps.set(uri.path, new Date());
+	private static updateCompileInfo(compileInfo: CompileInfo) {
+		this.compileTimestamps.set(compileInfo.srcUri.path, new Date());
+		compileInfo.extraArgs = this.extraArgs;
 	}
 
 	private static getCompileInfo(uri: Uri): CompileInfo | undefined {

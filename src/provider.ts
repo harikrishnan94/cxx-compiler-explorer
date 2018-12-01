@@ -9,6 +9,7 @@ import {
 } from "vscode";
 import { AsmDocument } from "./document";
 import { CompileCommands } from "./compile_commands";
+import { TypedEvent } from "./typedevent";
 
 export class AsmProvider implements TextDocumentContentProvider {
 	static scheme = "disassembly";
@@ -16,6 +17,7 @@ export class AsmProvider implements TextDocumentContentProvider {
 	private _documents = new Map<string, AsmDocument>();
 	private _watchers = new Map<string, FileSystemWatcher>();
 	private _onDidChange = new EventEmitter<Uri>();
+	private _onDidArgChange = new TypedEvent<Uri>();
 
 	provideTextDocumentContent(uri: Uri): string | Thenable<string> {
 		let document = this.provideAsmDocument(uri);
@@ -54,6 +56,7 @@ export class AsmProvider implements TextDocumentContentProvider {
 			this.reloadAsmDocument(CompileCommands.getAsmUri(fileUri)!)
 		);
 		this._watchers.set(uri.toString(), watcher);
+		this._onDidArgChange.on(asmUri => this.reloadAsmDocument(asmUri));
 	}
 
 	reloadAsmDocument(fileUri: Uri) {
@@ -62,6 +65,10 @@ export class AsmProvider implements TextDocumentContentProvider {
 
 		this._documents.set(uri.toString(), document);
 		this._onDidChange.fire(uri);
+	}
+
+	fireEvent(asmUri: Uri) {
+		this._onDidArgChange.emit(asmUri);
 	}
 
 	// Expose an event to signal changes of _virtual_ documents
