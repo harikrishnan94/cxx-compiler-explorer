@@ -1,7 +1,7 @@
 {
 	"name": "cxx-compiler-explorer",
 	"displayName": "C/C++ Compiler explorer",
-	"description": "Show Preprocessor/Disassembly output to source relations",
+	"description": "Show Disassembly output to source relations",
 	"version": "0.1.0",
 	"repository": {
 		"type": "git",
