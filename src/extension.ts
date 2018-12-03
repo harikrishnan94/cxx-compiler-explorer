@@ -43,7 +43,7 @@ export function activate(context: ExtensionContext) {
 					});
 			});
 
-			provider.fireEvent(asmUri);
+			provider.notifyCompileArgsChange(asmUri);
 		}
 	}
 

@@ -67,7 +67,7 @@ export class AsmProvider implements TextDocumentContentProvider {
 		this._onDidChange.fire(uri);
 	}
 
-	fireEvent(asmUri: Uri) {
+	notifyCompileArgsChange(asmUri: Uri) {
 		this._onDidArgChange.emit(asmUri);
 	}
 
