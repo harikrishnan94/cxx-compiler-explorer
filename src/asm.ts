@@ -101,6 +101,8 @@ export class AsmParser {
 	binaryHideFuncRe: RegExp | undefined;
 	inNvccDef = false;
 
+	variableMapDef = "##DEBUG_VALUE";
+
 	hasOpcode(line: string) {
 		// Remove any leading label definition...
 		const match = line.match(this.labelDef);
@@ -288,6 +290,11 @@ export class AsmParser {
 			let match;
 			if (line.trim() === "") {
 				result.push(new AsmLine("", undefined));
+				return;
+			}
+
+			// Register to local variable mapping directive
+			if (line.trim().startsWith(this.variableMapDef)) {
 				return;
 			}
 
