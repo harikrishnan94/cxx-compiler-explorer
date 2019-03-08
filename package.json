@@ -2,7 +2,7 @@
 	"name": "cxx-compiler-explorer",
 	"displayName": "C/C++ Compiler explorer",
 	"description": "Show Disassembly output to source relations",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/harikrishnan94/cxx-compiler-explorer"
