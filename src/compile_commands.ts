@@ -1,6 +1,6 @@
 "use strict";
 
-import { window, workspace, Uri } from "vscode";
+import { window, workspace, Uri, OutputChannel } from "vscode";
 import * as fs from "fs";
 import * as Path from "path";
 import { resolvePath, arrayEquals } from "./utils";
@@ -123,6 +123,7 @@ class CompileInfo {
 }
 
 export class CompileCommands {
+	private static errorChannel: OutputChannel;
 	private static compileCommands = new Map<string, CompileInfo>();
 	private static asmUriMap = new Map<string, Uri>();
 	private static llvmUriMap = new Map<string, Uri>();
@@ -174,7 +175,7 @@ export class CompileCommands {
 		return this.preprocessUriMap.get(uri.path);
 	}
 
-	static init() {
+	static init(errorChannel: OutputChannel): boolean {
 		const compileCommandsFile = this.getCompileCommandsPath();
 
 		if (fs.existsSync(compileCommandsFile)) {
@@ -185,9 +186,14 @@ export class CompileCommands {
 			compileCommands.forEach((compileCommand: CompileCommand) => {
 				CompileCommands.processCompileCommand(compileCommand);
 			});
+
+			this.errorChannel = errorChannel;
+			this.createOutputDirectory();
+
+			return true;
 		}
 
-		this.createOutputDirectory();
+		return false;
 	}
 
 	private static processCompileCommand(compileCommand: CompileCommand) {
@@ -233,17 +239,32 @@ export class CompileCommands {
 	}
 
 	private static execCompileCommand(compileInfo: CompileInfo) {
-		const command = compileInfo.command + this.extraArgs.join(" ");
-		const childErrBuf = child_process.execSync(command, {
-			cwd: compileInfo.compilationDirectory
+		const command = compileInfo.command.split(" ");
+		const result = child_process.spawnSync(command[0], command.slice(1), {
+			cwd: compileInfo.compilationDirectory,
+			encoding: "utf8"
 		});
 
-		const childErr = childErrBuf.toString();
+		if (result.status) {
+			const error = result.error
+				? result.error.message
+				: result.output
+				? result.output.join("\n")
+				: "";
 
-		if (childErr.length > 0) {
 			window.showErrorMessage(
-				"Compiler Exited with error code: " + childErr
+				"Cannot compile " + compileInfo.srcUri.path
 			);
+
+			this.errorChannel.clear();
+			this.errorChannel.appendLine(compileInfo.command);
+			this.errorChannel.appendLine(error);
+			this.errorChannel.appendLine(
+				command[0] +
+					" returned with error code " +
+					result.status.valueOf()
+			);
+			this.errorChannel.show();
 
 			return false;
 		}

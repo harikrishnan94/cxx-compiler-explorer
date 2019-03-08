@@ -20,7 +20,14 @@ export function activate(context: ExtensionContext) {
 		provider
 	);
 
-	CompileCommands.init();
+	// Output channel to send compilation errors
+	const errorChannel = window.createOutputChannel("C++ Compiler Explorer");
+
+	if (!CompileCommands.init(errorChannel)) {
+		window.showErrorMessage(
+			"Cannot find compilation database. Update `compilerexplorer.compilationDirectory`."
+		);
+	}
 
 	function openAsmDocumentForEditor(srcEditor: TextEditor) {
 		let asmUri = CompileCommands.getAsmUri(srcEditor.document.uri);
@@ -44,6 +51,11 @@ export function activate(context: ExtensionContext) {
 			});
 
 			provider.notifyCompileArgsChange(asmUri);
+		} else {
+			window.showErrorMessage(
+				srcEditor.document.uri +
+					" is not found in compile_commands.json"
+			);
 		}
 	}
 
@@ -79,6 +91,7 @@ export function activate(context: ExtensionContext) {
 		provider,
 		disassCommand,
 		disassWithArgsCommand,
-		providerRegistration
+		providerRegistration,
+		errorChannel
 	);
 }
