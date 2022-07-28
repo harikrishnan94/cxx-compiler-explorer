@@ -8,17 +8,15 @@ import { splitLines } from './utils';
 export class AsmDocument {
 
     private _uri: Uri;
-    private _unload: () => void;
     private _compinfo: CompilationInfo;
     private _emitter: EventEmitter<Uri>;
     private _watcher: FileSystemWatcher;
     lines: AsmLine[] = [];
     sourceToAsmMapping = new Map<number, number[]>();
 
-    constructor(uri: Uri, compinfo: CompilationInfo, unload: () => void, emitter: EventEmitter<Uri>) {
+    constructor(uri: Uri, compinfo: CompilationInfo, emitter: EventEmitter<Uri>) {
         this._uri = uri;
         this._compinfo = compinfo;
-        this._unload = unload;
 
         // The AsmDocument has access to the event emitter from
         // the containg provider. This allows it to signal changes
@@ -45,14 +43,9 @@ export class AsmDocument {
             const filter = new AsmFilter();
             filter.binary = false;
             try {
-                let asm = await this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
-                asm = splitLines(asm).filter((line) => {
-                    line = line.trimStart();
-                    return !line.startsWith('#') && !line.startsWith(';')
-                }).join('\n');
+                const asm = await this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
                 this.lines = new AsmParser().process(asm, filter).asm;
             } catch (error) {
-                this._unload();
                 if (error instanceof Error)
                     window.showErrorMessage(`Failed to show assembly: ${error.message}`);
                 else

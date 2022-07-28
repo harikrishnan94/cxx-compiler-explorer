@@ -27,6 +27,7 @@ export function activate(context: ExtensionContext): void {
             const decorator = new AsmDecorator(srcEditor, asmEditor, provider);
             // dirty way to get decorations work after showing disassembly
             setTimeout(() => decorator.updateSelection(srcEditor), 500);
+
             workspace.onDidCloseTextDocument((d: TextDocument) => {
                 if (d.uri == asmEditor.document.uri) provider.unload(d.uri);
             });

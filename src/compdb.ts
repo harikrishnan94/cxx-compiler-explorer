@@ -4,6 +4,7 @@ import { AsmProvider } from "./provider";
 import { ChildProcess, spawn } from 'child_process';
 import { TextDecoder } from "util";
 import { existsSync } from "fs";
+import { splitLines } from "./utils";
 
 interface CompileCommand {
     directory: string,
@@ -166,7 +167,10 @@ export class CompilationDatabase implements Disposable {
         }
         if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
 
-        return asm;
+        return splitLines(asm).filter((line) => {
+            line = line.trimStart();
+            return !line.startsWith('#') && !line.startsWith(';')
+        }).join('\n');
     }
 
     private get(srcUri: Uri): CompileCommand | undefined {
