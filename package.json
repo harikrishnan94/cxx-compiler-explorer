@@ -3,6 +3,7 @@
     "displayName": "C/C++ Compiler explorer",
     "description": "Show Disassembly output to source relations",
     "publisher": "harikrishnan94",
+    "icon": "icons/asm.png",
     "version": "0.3.0",
     "author": {
         "email": "harikrishnan.prabakaran@gmail.com",

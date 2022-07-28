@@ -73,6 +73,7 @@ export class CompilationDatabase implements Disposable {
             });
             if (status && status != 0) {
                 getOutputChannel().appendLine(stderr);
+                getOutputChannel().show();
                 if (!ignoreError) throw new Error("cannot compile file due to compilation errors");
             }
             const elapsed = (new Date().getTime() - start) / 1000;
