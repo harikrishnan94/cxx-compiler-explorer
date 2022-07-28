@@ -62,7 +62,10 @@ export class CompilationDatabase implements Disposable {
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
-        const spawn = (command: string, args: string[], stdin?: string): string | undefined => {
+        const spawn = (operation: string, ignoreError: boolean,
+            command: string, args: string[], stdin?: string) => {
+            const start = new Date().getTime();
+
             let { stdout, stderr, status } = spawnSync(command, args, {
                 input: stdin,
                 "encoding": 'utf-8',
@@ -70,16 +73,17 @@ export class CompilationDatabase implements Disposable {
             });
             if (status && status != 0) {
                 getOutputChannel().appendLine(stderr);
-                throw new Error("cannot compile file due to compilation errors");
+                if (!ignoreError) throw new Error("cannot compile file due to compilation errors");
             }
+            const elapsed = (new Date().getTime() - start) / 1000;
 
             if (stdout)
-                getOutputChannel().appendLine(`Output: ${stdout.length} lines`);
+                getOutputChannel().appendLine(`${operation}: ${stdout.length} lines, ${elapsed} s`);
             return stdout;
         };
 
-        const asm = spawn(command, args);
-        const demangled = spawn(cxxfilt, [], asm);
+        const asm = spawn("Compilation", false, command, args);
+        const demangled = spawn("C++Filt", true, cxxfilt, [], asm);
         return demangled ? demangled : (asm ? asm : "");
     }
 
