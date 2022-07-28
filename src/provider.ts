@@ -2,11 +2,19 @@
 
 import { Uri, EventEmitter, TextDocumentContentProvider, Event } from 'vscode';
 import { AsmDocument } from './document';
+import { CompilationDatabase } from "./compdb";
+
+export interface CompilationInfo {
+    srcUri: Uri,
+    compdb: CompilationDatabase,
+    extraArgs: string[]
+}
 
 export class AsmProvider implements TextDocumentContentProvider {
 
     static scheme = 'disassembly';
 
+    private _compinfo = new Map<string, CompilationInfo>;
     private _documents = new Map<string, AsmDocument>();
     private _onDidChange = new EventEmitter<Uri>();
 
@@ -19,11 +27,30 @@ export class AsmProvider implements TextDocumentContentProvider {
         let document = this._documents.get(uri.path);
 
         if (!document) {
-            document = new AsmDocument(uri, this._onDidChange);
-            this._documents.set(uri.path, document);
+            const compinfo = this._compinfo.get(uri.path)!;
+            let hasError = false;
+
+            document = new AsmDocument(uri, compinfo, () => {
+                hasError = true;
+                this.unload(uri);
+            }, this._onDidChange);
+
+            if (!hasError) this._documents.set(uri.path, document);
         }
 
         return document;
+    }
+
+    async loadCompilationInfo(srcUri: Uri, asmUri: Uri, extraArgs: string[]) {
+        const compdb = await CompilationDatabase.for(srcUri);
+        this._compinfo.set(asmUri.path, { srcUri, compdb, extraArgs });
+    }
+
+    unload(asmUri: Uri) {
+        const doc = this._documents.get(asmUri.path);
+        doc?.dispose();
+        this._documents.delete(asmUri.path);
+        this._compinfo.delete(asmUri.path);
     }
 
     // Expose an event to signal changes of _virtual_ documents

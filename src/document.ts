@@ -1,48 +1,65 @@
 'use strict';
 
-import { workspace, Uri, EventEmitter, FileSystemWatcher } from 'vscode';
+import { workspace, Uri, EventEmitter, FileSystemWatcher, window } from 'vscode';
 import { AsmParser, AsmLine, AsmFilter } from './asm';
+import { CompilationInfo } from './provider';
+import { splitLines } from './utils';
 
 export class AsmDocument {
 
     private _uri: Uri;
+    private _unload: () => void;
+    private _compinfo: CompilationInfo;
     private _emitter: EventEmitter<Uri>;
     private _watcher: FileSystemWatcher;
     lines: AsmLine[] = [];
     sourceToAsmMapping = new Map<number, number[]>();
 
-    constructor(uri: Uri, emitter: EventEmitter<Uri>) {
+    constructor(uri: Uri, compinfo: CompilationInfo, unload: () => void, emitter: EventEmitter<Uri>) {
         this._uri = uri;
+        this._compinfo = compinfo;
+        this._unload = unload;
 
         // The AsmDocument has access to the event emitter from
         // the containg provider. This allows it to signal changes
         this._emitter = emitter;
 
         // Watch for underlying assembly file and reload it on change
-        this._watcher = workspace.createFileSystemWatcher(uri.path);
+        this._watcher = workspace.createFileSystemWatcher(compinfo.srcUri.path);
         this._watcher.onDidChange(() => this.updateLater());
         this._watcher.onDidCreate(() => this.updateLater());
-        this._watcher.onDidDelete(() => this.updateLater());
+        this._watcher.onDidDelete(() => this.updateLater(true));
 
-        this.update();
+        this.update(false);
     }
 
-    private updateLater() {
+    private updateLater(deleted: boolean = false) {
         // Workarond for https://github.com/Microsoft/vscode/issues/72831
-        setTimeout(() => this.update(), 100);
+        setTimeout(async () => await this.update(deleted), 100);
     }
 
-    private update() {
-        const useBinaryParsing = workspace.getConfiguration('', this._uri.with({ scheme: 'file' }))
-            .get('compilerexplorer.useBinaryParsing', false);
-
-        workspace.openTextDocument(this._uri.with({ scheme: 'file' })).then(doc => {
-            const filter = new AsmFilter();
-            filter.binary = useBinaryParsing;
-            this.lines = new AsmParser().process(doc.getText(), filter).asm;
-        }, () => {
+    private async update(deleted: boolean) {
+        if (deleted) {
             this.lines = [new AsmLine(`Failed to load file '${this._uri.path}'`, undefined, [])];
-        }).then(() => this._emitter.fire(this._uri));
+        } else {
+            const filter = new AsmFilter();
+            filter.binary = false;
+            try {
+                let asm = this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
+                asm = splitLines(asm).filter((line) => {
+                    line = line.trimStart();
+                    return !line.startsWith('#') && !line.startsWith(';')
+                }).join('\n');
+                this.lines = new AsmParser().process(asm, filter).asm;
+            } catch (error) {
+                this._unload();
+                if (error instanceof Error)
+                    window.showErrorMessage(`Failed to show assembly: ${error.message}`);
+                else
+                    window.showErrorMessage(`Failed to show assembly: ${JSON.stringify(error)}`);
+            }
+        }
+        this._emitter.fire(this._uri);
     }
 
     get value(): string {
@@ -52,5 +69,4 @@ export class AsmDocument {
     dispose(): void {
         this._watcher.dispose();
     }
-
 }

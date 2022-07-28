@@ -2,12 +2,22 @@
     "name": "cxx-compiler-explorer",
     "displayName": "C/C++ Compiler explorer",
     "description": "Show Disassembly output to source relations",
-    "version": "0.0.1",
+    "publisher": "harikrishnan94",
+    "version": "0.3.0",
+    "author": {
+        "email": "harikrishnan.prabakaran@gmail.com",
+        "name": "Harikrishnan Prabakaran"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/harikrishnan94/cxx-compiler-explorer.git"
+    },
     "engines": {
         "vscode": "^1.69.0"
     },
     "categories": [
-        "Other"
+        "Visualization",
+        "Programming Languages"
     ],
     "activationEvents": [
         "onCommand:compilerexplorer.disassOutput",
@@ -35,22 +45,10 @@
                         "description": "Location of compile_commands.json file",
                         "scope": "resource"
                     },
-                    "compilerexplorer.outDir": {
-                        "type": "string",
-                        "default": "${workspaceFolder}/.vscode/compilerexplorer_out",
-                        "description": "Location of output files created",
-                        "scope": "resource"
-                    },
                     "compilerexplorer.dimUnusedSourceLines": {
                         "type": "boolean",
                         "default": true,
                         "description": "Dim the lines that was thrown away by compiler",
-                        "scope": "resource"
-                    },
-                    "compilerexplorer.useBinaryParsing": {
-                        "type": "boolean",
-                        "default": false,
-                        "description": "Parse disassembly as disassembly produced by objdump",
                         "scope": "resource"
                     }
                 }
@@ -69,22 +67,19 @@
         "test": "node ./out/test/runTest.js"
     },
     "devDependencies": {
-        "@types/vscode": "^1.69.0",
         "@types/glob": "^7.2.0",
         "@types/mocha": "^9.1.1",
         "@types/node": "16.x",
+        "@types/vscode": "^1.69.0",
         "@typescript-eslint/eslint-plugin": "^5.30.0",
         "@typescript-eslint/parser": "^5.30.0",
+        "@vscode/test-electron": "^2.1.5",
         "eslint": "^8.18.0",
         "glob": "^8.0.3",
         "mocha": "^10.0.0",
-        "typescript": "^4.7.4",
         "ts-loader": "^9.3.1",
+        "typescript": "^4.7.4",
         "webpack": "^5.73.0",
-        "webpack-cli": "^4.10.0",
-        "@vscode/test-electron": "^2.1.5"
-    },
-    "dependencies": {
-        "json2typescript": "^1.5.1"
+        "webpack-cli": "^4.10.0"
     }
 }
