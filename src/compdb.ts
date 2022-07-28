@@ -3,6 +3,7 @@ import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { spawnSync } from "child_process";
 import { TextDecoder } from "util";
+import { existsSync } from "fs";
 
 interface CompileCommand {
     directory: string,
@@ -59,9 +60,9 @@ export class CompilationDatabase implements Disposable {
         const command = ccommand.arguments[0];
         const args = [...ccommand.arguments.slice(1), ...extraArgs];
 
-        getOutputChannel().appendLine(`Executing: ${command} ${args.join(' ')}`);
+        getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
-        const spawn = (command: string, args: string[], stdin?: string) => {
+        const spawn = (command: string, args: string[], stdin?: string): string | undefined => {
             let { stdout, stderr, status } = spawnSync(command, args, {
                 input: stdin,
                 "encoding": 'utf-8',
@@ -72,13 +73,14 @@ export class CompilationDatabase implements Disposable {
                 throw new Error("cannot compile file due to compilation errors");
             }
 
+            if (stdout)
+                getOutputChannel().appendLine(`Output: ${stdout.length} lines`);
             return stdout;
         };
 
         const asm = spawn(command, args);
-        if (cxxfilt.indexOf(cxxfiltExe) != -1)
-            return spawn(cxxfilt, [], asm);
-        return asm;
+        const demangled = spawn(cxxfilt, [], asm);
+        return demangled ? demangled : (asm ? asm : "");
     }
 
     static disposable(): Disposable {
@@ -208,5 +210,8 @@ function getCxxFiltExe(compExe: string): string {
         .replace('g++', cxxfiltExe)
         .replace('gcc', cxxfiltExe);
 
-    return Path.join(parsed.dir, parsed.name, parsed.ext);
+    const cxxfilt = Path.join(parsed.dir, parsed.name, parsed.ext);
+    if (!existsSync(cxxfilt)) return cxxfiltExe;
+
+    return cxxfilt;
 }
