@@ -45,7 +45,7 @@ export class AsmDocument {
             const filter = new AsmFilter();
             filter.binary = false;
             try {
-                let asm = this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
+                let asm = await this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
                 asm = splitLines(asm).filter((line) => {
                     line = line.trimStart();
                     return !line.startsWith('#') && !line.startsWith(';')
