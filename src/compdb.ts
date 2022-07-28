@@ -183,13 +183,11 @@ export class CompilationDatabase implements Disposable {
     }
 }
 
-export function getAsmUri(source: TextDocument): Uri {
-    const sourceUri = source.uri;
-
+export function getAsmUri(srcUri: Uri): Uri {
     // by default just replace file extension with '.S'
-    const asmUri = sourceUri.with({
+    const asmUri = srcUri.with({
         scheme: AsmProvider.scheme,
-        path: pathWithoutExtension(sourceUri.path) + ".S",
+        path: pathWithoutExtension(srcUri.path) + ".S",
     });
 
     return asmUri;

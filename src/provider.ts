@@ -2,7 +2,7 @@
 
 import { Uri, EventEmitter, TextDocumentContentProvider, Event } from 'vscode';
 import { AsmDocument } from './document';
-import { CompilationDatabase } from "./compdb";
+import { CompilationDatabase, getAsmUri } from "./compdb";
 
 export interface CompilationInfo {
     srcUri: Uri,
@@ -40,7 +40,8 @@ export class AsmProvider implements TextDocumentContentProvider {
         this._compinfo.set(asmUri.path, { srcUri, compdb, extraArgs });
     }
 
-    unload(asmUri: Uri) {
+    unload(srcUri: Uri) {
+        const asmUri = getAsmUri(srcUri);
         const doc = this._documents.get(asmUri.path);
         doc?.dispose();
         this._documents.delete(asmUri.path);
