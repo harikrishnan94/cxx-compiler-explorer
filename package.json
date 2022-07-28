@@ -2,12 +2,22 @@
     "name": "cxx-compiler-explorer",
     "displayName": "C/C++ Compiler explorer",
     "description": "Show Disassembly output to source relations",
-    "version": "0.0.1",
+    "publisher": "harikrishnan94",
+    "version": "0.3.0",
+    "author": {
+        "email": "harikrishnan.prabakaran@gmail.com",
+        "name": "Harikrishnan Prabakaran"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/harikrishnan94/cxx-compiler-explorer.git"
+    },
     "engines": {
         "vscode": "^1.69.0"
     },
     "categories": [
-        "Other"
+        "Visualization",
+        "Programming Languages"
     ],
     "activationEvents": [
         "onCommand:compilerexplorer.disassOutput",
