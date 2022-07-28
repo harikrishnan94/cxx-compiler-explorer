@@ -1,4 +1,4 @@
-import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation } from "vscode";
+import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation, Progress, CancellationToken } from "vscode";
 import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { ChildProcess, spawn } from 'child_process';
@@ -58,11 +58,16 @@ export class CompilationDatabase implements Disposable {
 
         const start = new Date().getTime();
 
-        const progressOption = { location: ProgressLocation.Notification, title: "C++ Compiler Explorer" }
-        const asm = await window.withProgress(progressOption, async (progress): Promise<string | Error> => {
-            progress.report({ message: `Compilation in progress` });
-            return await this.runCompiler(ccommand, extraArgs);
-        });
+        const progressOption = {
+            location: ProgressLocation.Notification,
+            title: "C++ Compiler Explorer",
+            cancellable: true
+        }
+        const asm = await window.withProgress(progressOption,
+            async (progress, ctok): Promise<string | Error> => {
+                progress.report({ message: "Compilation in progress" });
+                return await this.runCompiler(ctok, ccommand, extraArgs);
+            });
 
         const elapsed = (new Date().getTime() - start) / 1000;
         if (asm instanceof Error) throw asm;
@@ -115,7 +120,7 @@ export class CompilationDatabase implements Disposable {
         }
     }
 
-    private async runCompiler(ccommand: CompileCommand, extraArgs: string[]): Promise<string | Error> {
+    private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, extraArgs: string[]): Promise<string | Error> {
         const cxxfiltExe = getCxxFiltExe(ccommand.arguments[0]);
         const command = ccommand.arguments[0];
         const args = [...ccommand.arguments.slice(1), ...extraArgs];
@@ -146,6 +151,7 @@ export class CompilationDatabase implements Disposable {
 
         cxxfilt.stdin.cork();
         for await (let chunk of cxx.stdout!) {
+            if (ctok.isCancellationRequested) return Error("operation cancelled");
             cxxfilt.stdin.write(chunk);
         }
         cxxfilt.stdin.uncork();
@@ -155,6 +161,7 @@ export class CompilationDatabase implements Disposable {
 
         let asm = ""
         for await (let chunk of cxxfilt.stdout!) {
+            if (ctok.isCancellationRequested) return Error("operation cancelled");
             asm += chunk;
         }
         if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
