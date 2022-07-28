@@ -3,6 +3,7 @@
 import { workspace, Uri, EventEmitter, FileSystemWatcher, window } from 'vscode';
 import { AsmParser, AsmLine, AsmFilter } from './asm';
 import { CompilationInfo } from './provider';
+import { splitLines } from './utils';
 
 export class AsmDocument {
 
@@ -44,7 +45,11 @@ export class AsmDocument {
             const filter = new AsmFilter();
             filter.binary = false;
             try {
-                const asm = this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
+                let asm = this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
+                asm = splitLines(asm).filter((line) => {
+                    line = line.trimStart();
+                    return !line.startsWith('#') && !line.startsWith(';')
+                }).join('\n');
                 this.lines = new AsmParser().process(asm, filter).asm;
             } catch (error) {
                 this._unload();
