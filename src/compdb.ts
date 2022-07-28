@@ -59,7 +59,7 @@ export class CompilationDatabase implements Disposable {
         const command = ccommand.arguments[0];
         const args = [...ccommand.arguments.slice(1), ...extraArgs];
 
-        getOutputChannel().appendLine(`Executing: ${command}`);
+        getOutputChannel().appendLine(`Executing: ${command} ${args.join(' ')}`);
 
         const spawn = (command: string, args: string[], stdin?: string) => {
             let { stdout, stderr, status } = spawnSync(command, args, {
