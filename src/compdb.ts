@@ -1,4 +1,4 @@
-import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation } from "vscode";
+import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation, Progress, CancellationToken } from "vscode";
 import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { ChildProcess, spawn } from 'child_process';
@@ -56,56 +56,23 @@ export class CompilationDatabase implements Disposable {
         const ccommand = this.get(src);
         if (!ccommand) throw new Error("cannot find compilation command");
 
-        const cxxfilt = getCxxFiltExe(ccommand.arguments[0]);
-        const command = ccommand.arguments[0];
-        const args = [...ccommand.arguments.slice(1), ...extraArgs];
-
-        getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
-
         const start = new Date().getTime();
 
-        const progressOption = { location: ProgressLocation.Notification, title: "C++ Compiler Explorer" }
-        const asm = await window.withProgress(progressOption, async (progress): Promise<string | Error> => {
-            progress.report({ message: `Compilation in progress` });
-
-            const checkStdErr = async (process: ChildProcess) => {
-                let stderr = "";
-                for await (let chunk of cxx.stderr!) {
-                    stderr += chunk;
-                }
-                if (stderr.length > 0) {
-                    getOutputChannel().appendLine(stderr);
-                    getOutputChannel().show();
-                    return false;
-                }
-                return true;
-            };
-
-            const cxx = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-            const cxxfilt = spawn(cxxfiltExe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-            cxxfilt.stdin.cork();
-            for await (let chunk of cxx.stdout!) {
-                cxxfilt.stdin.write(chunk);
-            }
-            cxxfilt.stdin.uncork();
-            cxxfilt.stdin.end();
-
-            if (!await checkStdErr(cxx)) return Error("compilation failed");
-
-            let asm = ""
-            for await (let chunk of cxxfilt.stdout!) {
-                asm += chunk;
-            }
-            if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
-
-            return asm;
-        });
+        const progressOption = {
+            location: ProgressLocation.Notification,
+            title: "C++ Compiler Explorer",
+            cancellable: true
+        }
+        const asm = await window.withProgress(progressOption,
+            async (progress, ctok): Promise<string | Error> => {
+                progress.report({ message: "Compilation in progress" });
+                return await this.runCompiler(ctok, ccommand, extraArgs);
+            });
 
         const elapsed = (new Date().getTime() - start) / 1000;
         if (asm instanceof Error) throw asm;
 
-        getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} chars, ${elapsed} s`);
+        getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} bytes, ${elapsed} s`);
 
         return asm;
     }
@@ -135,9 +102,7 @@ export class CompilationDatabase implements Disposable {
 
     private static preprocess(commands: CompileCommand[]) {
         for (let ccommand of commands) {
-            if (ccommand.command.length > 0) {
-                ccommand.arguments = ccommand.command.split(/(\s+)/).filter(arg => !arg.match((/(\s+)/)));
-            }
+            if (ccommand.command.length > 0) ccommand.arguments = splitWhitespace(ccommand.command);
             ccommand.command = "";
 
             let isOutfile = false;
@@ -153,6 +118,55 @@ export class CompilationDatabase implements Disposable {
 
             ccommand.arguments.push('-g', '-S', '-o', '-');
         }
+    }
+
+    private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, extraArgs: string[]): Promise<string | Error> {
+        const cxxfiltExe = getCxxFiltExe(ccommand.arguments[0]);
+        const command = ccommand.arguments[0];
+        const args = [...ccommand.arguments.slice(1), ...extraArgs];
+
+        getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
+
+        const checkStdErr = async (process: ChildProcess) => {
+            let stderr = "";
+            for await (let chunk of process.stderr!) {
+                stderr += chunk;
+            }
+            if (stderr.length > 0) {
+                getOutputChannel().appendLine(stderr);
+                getOutputChannel().show();
+            }
+
+            try {
+                if (await onExit(process)) return false;
+            } catch (e) {
+                return false;
+            }
+
+            return true;
+        };
+
+        const cxx = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const cxxfilt = spawn(cxxfiltExe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        cxxfilt.stdin.cork();
+        for await (let chunk of cxx.stdout!) {
+            if (ctok.isCancellationRequested) return Error("operation cancelled");
+            cxxfilt.stdin.write(chunk);
+        }
+        cxxfilt.stdin.uncork();
+        cxxfilt.stdin.end();
+
+        if (!await checkStdErr(cxx)) return Error("compilation failed");
+
+        let asm = ""
+        for await (let chunk of cxxfilt.stdout!) {
+            if (ctok.isCancellationRequested) return Error("operation cancelled");
+            asm += chunk;
+        }
+        if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
+
+        return asm;
     }
 
     private get(srcUri: Uri): CompileCommand | undefined {
@@ -241,4 +255,61 @@ function getCxxFiltExe(compExe: string): string {
     if (!existsSync(cxxfilt)) return cxxfiltExe;
 
     return cxxfilt;
+}
+
+async function onExit(childProcess: ChildProcess): Promise<number> {
+    return new Promise((resolve, reject) => {
+        childProcess.once('exit', (code: number, signal: string) => {
+            resolve(code);
+        });
+        childProcess.once('error', (err: Error) => {
+            reject(err);
+        });
+    });
+}
+
+function splitWhitespace(str: string): string[] {
+    let quoteChar: string | undefined = undefined;
+    let shouldEscape = false;
+    let strs: string[] = [];
+
+    let i = 0;
+    let strStart = 0;
+    for (let ch of str) {
+        switch (ch) {
+            case '\\':
+                shouldEscape = !shouldEscape;
+                break;
+
+            case '\'':
+                if (!shouldEscape) {
+                    if (quoteChar == '\'') quoteChar = undefined;
+                    else quoteChar = '\'';
+                }
+                break;
+            case '"':
+                if (!shouldEscape) {
+                    if (quoteChar == '"') quoteChar = undefined;
+                    else quoteChar = '"';
+                }
+                break;
+
+            case ' ':
+                if (!quoteChar) {
+                    const slice = str.slice(strStart, i);
+                    if (slice.length > 0) strs.push(slice);
+                    strStart = i + 1;
+                }
+
+            default:
+                break;
+        }
+
+        i++;
+    }
+
+    const slice = str.slice(strStart, i);
+    if (slice.length > 0) strs.push(slice);
+
+    return strs;
 }
