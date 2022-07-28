@@ -28,14 +28,8 @@ export class AsmProvider implements TextDocumentContentProvider {
 
         if (!document) {
             const compinfo = this._compinfo.get(uri.path)!;
-            let hasError = false;
-
-            document = new AsmDocument(uri, compinfo, () => {
-                hasError = true;
-                this.unload(uri);
-            }, this._onDidChange);
-
-            if (!hasError) this._documents.set(uri.path, document);
+            document = new AsmDocument(uri, compinfo, this._onDidChange);
+            this._documents.set(uri.path, document);
         }
 
         return document;
