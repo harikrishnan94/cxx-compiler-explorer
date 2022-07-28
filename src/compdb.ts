@@ -1,7 +1,7 @@
-import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable } from "vscode";
+import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation } from "vscode";
 import * as Path from "path";
 import { AsmProvider } from "./provider";
-import { spawnSync } from "child_process";
+import { ChildProcess, spawn } from 'child_process';
 import { TextDecoder } from "util";
 import { existsSync } from "fs";
 
@@ -52,7 +52,7 @@ export class CompilationDatabase implements Disposable {
         return compdb;
     }
 
-    compile(src: Uri, extraArgs: string[]): string {
+    async compile(src: Uri, extraArgs: string[]): Promise<string> {
         const ccommand = this.get(src);
         if (!ccommand) throw new Error("cannot find compilation command");
 
@@ -62,30 +62,52 @@ export class CompilationDatabase implements Disposable {
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
-        const spawn = (operation: string, ignoreError: boolean,
-            command: string, args: string[], stdin?: string) => {
-            const start = new Date().getTime();
+        const start = new Date().getTime();
 
-            let { stdout, stderr, status } = spawnSync(command, args, {
-                input: stdin,
-                "encoding": 'utf-8',
-                timeout: 30000 // 30 seconds
-            });
-            if (status && status != 0) {
-                getOutputChannel().appendLine(stderr);
-                getOutputChannel().show();
-                if (!ignoreError) throw new Error("cannot compile file due to compilation errors");
+        const progressOption = { location: ProgressLocation.Notification, title: "C++ Compiler Explorer" }
+        const asm = await window.withProgress(progressOption, async (progress): Promise<string | Error> => {
+            progress.report({ message: `Compilation in progress` });
+
+            const checkStdErr = async (process: ChildProcess) => {
+                let stderr = "";
+                for await (let chunk of cxx.stderr!) {
+                    stderr += chunk;
+                }
+                if (stderr.length > 0) {
+                    getOutputChannel().appendLine(stderr);
+                    getOutputChannel().show();
+                    return false;
+                }
+                return true;
+            };
+
+            const cxx = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            const cxxfilt = spawn(cxxfiltExe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+            cxxfilt.stdin.cork();
+            for await (let chunk of cxx.stdout!) {
+                cxxfilt.stdin.write(chunk);
             }
-            const elapsed = (new Date().getTime() - start) / 1000;
+            cxxfilt.stdin.uncork();
+            cxxfilt.stdin.end();
 
-            if (stdout)
-                getOutputChannel().appendLine(`${operation}: ${stdout.length} lines, ${elapsed} s`);
-            return stdout;
-        };
+            if (!await checkStdErr(cxx)) return Error("compilation failed");
 
-        const asm = spawn("Compilation", false, command, args);
-        const demangled = spawn("C++Filt", true, cxxfilt, [], asm);
-        return demangled ? demangled : (asm ? asm : "");
+            let asm = ""
+            for await (let chunk of cxxfilt.stdout!) {
+                asm += chunk;
+            }
+            if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
+
+            return asm;
+        });
+
+        const elapsed = (new Date().getTime() - start) / 1000;
+        if (asm instanceof Error) throw asm;
+
+        getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} chars, ${elapsed} s`);
+
+        return asm;
     }
 
     static disposable(): Disposable {
