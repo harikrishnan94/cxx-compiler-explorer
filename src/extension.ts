@@ -1,9 +1,9 @@
 'use strict';
 
-import { workspace, window, commands, ExtensionContext, TextEditor } from 'vscode';
+import { workspace, window, commands, ExtensionContext, TextEditor, TextDocument } from 'vscode';
 import { AsmProvider } from './provider';
 import { AsmDecorator } from './decorator';
-import { getAsmUri, getOutputChannel } from './compdb';
+import { CompilationDatabase, getAsmUri, getOutputChannel } from './compdb';
 
 export function activate(context: ExtensionContext): void {
     const provider = new AsmProvider();
@@ -27,6 +27,9 @@ export function activate(context: ExtensionContext): void {
             const decorator = new AsmDecorator(srcEditor, asmEditor, provider);
             // dirty way to get decorations work after showing disassembly
             setTimeout(() => decorator.updateSelection(srcEditor), 500);
+            workspace.onDidCloseTextDocument((d: TextDocument) => {
+                if (d.uri == asmEditor.document.uri) provider.unload(d.uri);
+            });
         } catch (error) {
             if (error instanceof Error)
                 window.showErrorMessage(`Failed to show assembly: ${error.message}`);
@@ -52,6 +55,7 @@ export function activate(context: ExtensionContext): void {
         disassembleCommand,
         disassembleWithArgsCommand,
         providerRegistration,
-        getOutputChannel()
+        getOutputChannel(),
+        CompilationDatabase.disposable()
     );
 }

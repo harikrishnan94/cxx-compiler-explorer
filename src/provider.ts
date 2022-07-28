@@ -28,8 +28,14 @@ export class AsmProvider implements TextDocumentContentProvider {
 
         if (!document) {
             const compinfo = this._compinfo.get(uri.path)!;
-            document = new AsmDocument(uri, compinfo, this._onDidChange);
-            this._documents.set(uri.path, document);
+            let hasError = false;
+
+            document = new AsmDocument(uri, compinfo, () => {
+                hasError = true;
+                this.unload(uri);
+            }, this._onDidChange);
+
+            if (!hasError) this._documents.set(uri.path, document);
         }
 
         return document;
@@ -38,6 +44,13 @@ export class AsmProvider implements TextDocumentContentProvider {
     async loadCompilationInfo(srcUri: Uri, asmUri: Uri, extraArgs: string[]) {
         const compdb = await CompilationDatabase.for(srcUri);
         this._compinfo.set(asmUri.path, { srcUri, compdb, extraArgs });
+    }
+
+    unload(asmUri: Uri) {
+        const doc = this._documents.get(asmUri.path);
+        doc?.dispose();
+        this._documents.delete(asmUri.path);
+        this._compinfo.delete(asmUri.path);
     }
 
     // Expose an event to signal changes of _virtual_ documents

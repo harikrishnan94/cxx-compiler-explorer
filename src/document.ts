@@ -1,21 +1,23 @@
 'use strict';
 
-import { workspace, Uri, EventEmitter, FileSystemWatcher } from 'vscode';
+import { workspace, Uri, EventEmitter, FileSystemWatcher, window } from 'vscode';
 import { AsmParser, AsmLine, AsmFilter } from './asm';
 import { CompilationInfo } from './provider';
 
 export class AsmDocument {
 
     private _uri: Uri;
+    private _unload: () => void;
     private _compinfo: CompilationInfo;
     private _emitter: EventEmitter<Uri>;
     private _watcher: FileSystemWatcher;
     lines: AsmLine[] = [];
     sourceToAsmMapping = new Map<number, number[]>();
 
-    constructor(uri: Uri, compinfo: CompilationInfo, emitter: EventEmitter<Uri>) {
+    constructor(uri: Uri, compinfo: CompilationInfo, unload: () => void, emitter: EventEmitter<Uri>) {
         this._uri = uri;
         this._compinfo = compinfo;
+        this._unload = unload;
 
         // The AsmDocument has access to the event emitter from
         // the containg provider. This allows it to signal changes
@@ -41,8 +43,16 @@ export class AsmDocument {
         } else {
             const filter = new AsmFilter();
             filter.binary = false;
-            const asm = this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
-            this.lines = new AsmParser().process(asm, filter).asm;
+            try {
+                const asm = this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
+                this.lines = new AsmParser().process(asm, filter).asm;
+            } catch (error) {
+                this._unload();
+                if (error instanceof Error)
+                    window.showErrorMessage(`Failed to show assembly: ${error.message}`);
+                else
+                    window.showErrorMessage(`Failed to show assembly: ${JSON.stringify(error)}`);
+            }
         }
         this._emitter.fire(this._uri);
     }

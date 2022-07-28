@@ -1,4 +1,4 @@
-import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher } from "vscode";
+import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable } from "vscode";
 import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { spawnSync } from "child_process";
@@ -11,7 +11,9 @@ interface CompileCommand {
     arguments: string[]
 }
 
-export class CompilationDatabase {
+const cxxfiltExe = 'c++filt';
+
+export class CompilationDatabase implements Disposable {
     private compileCommandsFile: Uri;
     private commands: Map<string, CompileCommand>;
     private watcher: FileSystemWatcher;
@@ -53,22 +55,38 @@ export class CompilationDatabase {
         const ccommand = this.get(src);
         if (!ccommand) throw new Error("cannot find compilation command");
 
-        const getExecCommand = () => {
-            const args = ccommand.arguments;
-            return { command: args[0], args: [...args.slice(1), ...extraArgs] }
+        const cxxfilt = getCxxFiltExe(ccommand.arguments[0]);
+        const command = ccommand.arguments[0];
+        const args = [...ccommand.arguments.slice(1), ...extraArgs];
+
+        getOutputChannel().appendLine(`Executing: ${command}`);
+
+        const spawn = (command: string, args: string[], stdin?: string) => {
+            let { stdout, stderr, status } = spawnSync(command, args, {
+                input: stdin,
+                "encoding": 'utf-8',
+                timeout: 30000 // 30 seconds
+            });
+            if (status && status != 0) {
+                getOutputChannel().appendLine(stderr);
+                throw new Error("cannot compile file due to compilation errors");
+            }
+
+            return stdout;
         };
-        const { command, args } = getExecCommand();
 
-        getOutputChannel().appendLine(`Executing: ${[command, ...args].join(" ")}`);
-        const { stdout, stderr, status } = spawnSync(command, args, {
-            encoding: 'utf-8'
+        const asm = spawn(command, args);
+        if (cxxfilt.indexOf(cxxfiltExe) != -1)
+            return spawn(cxxfilt, [], asm);
+        return asm;
+    }
+
+    static disposable(): Disposable {
+        return new Disposable(() => {
+            for (let compdb of this.compdbs) {
+                compdb[1].dispose();
+            }
         });
-        getOutputChannel().appendLine(stderr);
-
-        if (status != 0)
-            throw new Error("cannot compile file due to compilation errors");
-
-        return stdout;
     }
 
     private static async load(compileCommandsFile: Uri): Promise<Map<string, CompileCommand>> {
@@ -104,7 +122,7 @@ export class CompilationDatabase {
                 }
             });
 
-            ccommand.arguments.push('-S', '-o', '-');
+            ccommand.arguments.push('-g', '-S', '-o', '-');
         }
     }
 
@@ -181,4 +199,14 @@ export function getOutputChannel(): OutputChannel {
     if (outputChannel === undefined)
         outputChannel = window.createOutputChannel("C/C++ Compiler Explorer", "shellscript");
     return outputChannel;
+}
+
+function getCxxFiltExe(compExe: string): string {
+    let parsed = Path.parse(compExe)
+    parsed.name = parsed.name.replace('clang++', cxxfiltExe)
+        .replace('clang', cxxfiltExe)
+        .replace('g++', cxxfiltExe)
+        .replace('gcc', cxxfiltExe);
+
+    return Path.join(parsed.dir, parsed.name, parsed.ext);
 }
