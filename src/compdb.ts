@@ -56,56 +56,18 @@ export class CompilationDatabase implements Disposable {
         const ccommand = this.get(src);
         if (!ccommand) throw new Error("cannot find compilation command");
 
-        const cxxfilt = getCxxFiltExe(ccommand.arguments[0]);
-        const command = ccommand.arguments[0];
-        const args = [...ccommand.arguments.slice(1), ...extraArgs];
-
-        getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
-
         const start = new Date().getTime();
 
         const progressOption = { location: ProgressLocation.Notification, title: "C++ Compiler Explorer" }
         const asm = await window.withProgress(progressOption, async (progress): Promise<string | Error> => {
             progress.report({ message: `Compilation in progress` });
-
-            const checkStdErr = async (process: ChildProcess) => {
-                let stderr = "";
-                for await (let chunk of cxx.stderr!) {
-                    stderr += chunk;
-                }
-                if (stderr.length > 0) {
-                    getOutputChannel().appendLine(stderr);
-                    getOutputChannel().show();
-                    return false;
-                }
-                return true;
-            };
-
-            const cxx = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-            const cxxfilt = spawn(cxxfiltExe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
-
-            cxxfilt.stdin.cork();
-            for await (let chunk of cxx.stdout!) {
-                cxxfilt.stdin.write(chunk);
-            }
-            cxxfilt.stdin.uncork();
-            cxxfilt.stdin.end();
-
-            if (!await checkStdErr(cxx)) return Error("compilation failed");
-
-            let asm = ""
-            for await (let chunk of cxxfilt.stdout!) {
-                asm += chunk;
-            }
-            if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
-
-            return asm;
+            return await this.runCompiler(ccommand, extraArgs);
         });
 
         const elapsed = (new Date().getTime() - start) / 1000;
         if (asm instanceof Error) throw asm;
 
-        getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} chars, ${elapsed} s`);
+        getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} bytes, ${elapsed} s`);
 
         return asm;
     }
@@ -153,6 +115,53 @@ export class CompilationDatabase implements Disposable {
 
             ccommand.arguments.push('-g', '-S', '-o', '-');
         }
+    }
+
+    private async runCompiler(ccommand: CompileCommand, extraArgs: string[]): Promise<string | Error> {
+        const cxxfiltExe = getCxxFiltExe(ccommand.arguments[0]);
+        const command = ccommand.arguments[0];
+        const args = [...ccommand.arguments.slice(1), ...extraArgs];
+
+        getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
+
+        const checkStdErr = async (process: ChildProcess) => {
+            let stderr = "";
+            for await (let chunk of process.stderr!) {
+                stderr += chunk;
+            }
+            if (stderr.length > 0) {
+                getOutputChannel().appendLine(stderr);
+                getOutputChannel().show();
+            }
+
+            try {
+                if (await onExit(process)) return false;
+            } catch (e) {
+                return false;
+            }
+
+            return true;
+        };
+
+        const cxx = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const cxxfilt = spawn(cxxfiltExe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+        cxxfilt.stdin.cork();
+        for await (let chunk of cxx.stdout!) {
+            cxxfilt.stdin.write(chunk);
+        }
+        cxxfilt.stdin.uncork();
+        cxxfilt.stdin.end();
+
+        if (!await checkStdErr(cxx)) return Error("compilation failed");
+
+        let asm = ""
+        for await (let chunk of cxxfilt.stdout!) {
+            asm += chunk;
+        }
+        if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
+
+        return asm;
     }
 
     private get(srcUri: Uri): CompileCommand | undefined {
@@ -241,4 +250,15 @@ function getCxxFiltExe(compExe: string): string {
     if (!existsSync(cxxfilt)) return cxxfiltExe;
 
     return cxxfilt;
+}
+
+async function onExit(childProcess: ChildProcess): Promise<number> {
+    return new Promise((resolve, reject) => {
+        childProcess.once('exit', (code: number, signal: string) => {
+            resolve(code);
+        });
+        childProcess.once('error', (err: Error) => {
+            reject(err);
+        });
+    });
 }
