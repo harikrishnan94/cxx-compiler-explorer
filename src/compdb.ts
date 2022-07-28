@@ -97,9 +97,7 @@ export class CompilationDatabase implements Disposable {
 
     private static preprocess(commands: CompileCommand[]) {
         for (let ccommand of commands) {
-            if (ccommand.command.length > 0) {
-                ccommand.arguments = ccommand.command.split(/(\s+)/).filter(arg => !arg.match((/(\s+)/)));
-            }
+            if (ccommand.command.length > 0) ccommand.arguments = splitWhitespace(ccommand.command);
             ccommand.command = "";
 
             let isOutfile = false;
@@ -261,4 +259,50 @@ async function onExit(childProcess: ChildProcess): Promise<number> {
             reject(err);
         });
     });
+}
+
+function splitWhitespace(str: string): string[] {
+    let quoteChar: string | undefined = undefined;
+    let shouldEscape = false;
+    let strs: string[] = [];
+
+    let i = 0;
+    let strStart = 0;
+    for (let ch of str) {
+        switch (ch) {
+            case '\\':
+                shouldEscape = !shouldEscape;
+                break;
+
+            case '\'':
+                if (!shouldEscape) {
+                    if (quoteChar == '\'') quoteChar = undefined;
+                    else quoteChar = '\'';
+                }
+                break;
+            case '"':
+                if (!shouldEscape) {
+                    if (quoteChar == '"') quoteChar = undefined;
+                    else quoteChar = '"';
+                }
+                break;
+
+            case ' ':
+                if (!quoteChar) {
+                    const slice = str.slice(strStart, i);
+                    if (slice.length > 0) strs.push(slice);
+                    strStart = i + 1;
+                }
+
+            default:
+                break;
+        }
+
+        i++;
+    }
+
+    const slice = str.slice(strStart, i);
+    if (slice.length > 0) strs.push(slice);
+
+    return strs;
 }
