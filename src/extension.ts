@@ -14,7 +14,7 @@ export function activate(context: ExtensionContext): void {
 
     const showDisassembly = async (srcEditor: TextEditor, extraArgs: string[] = []) => {
         try {
-            const asmUri = getAsmUri(srcEditor.document);
+            const asmUri = getAsmUri(srcEditor.document.uri);
 
             await provider.loadCompilationInfo(srcEditor.document.uri, asmUri, extraArgs);
 
@@ -29,7 +29,7 @@ export function activate(context: ExtensionContext): void {
             setTimeout(() => decorator.updateSelection(srcEditor), 500);
 
             workspace.onDidCloseTextDocument((d: TextDocument) => {
-                if (d.uri == asmEditor.document.uri) provider.unload(d.uri);
+                if (d.uri == srcEditor.document.uri) provider.unload(d.uri);
             });
         } catch (error) {
             if (error instanceof Error)

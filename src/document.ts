@@ -3,7 +3,6 @@
 import { workspace, Uri, EventEmitter, FileSystemWatcher, window } from 'vscode';
 import { AsmParser, AsmLine, AsmFilter } from './asm';
 import { CompilationInfo } from './provider';
-import { splitLines } from './utils';
 
 export class AsmDocument {
 
