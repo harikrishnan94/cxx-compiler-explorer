@@ -1,9 +1,8 @@
 # Change Log
 
-All notable changes to the "cxx-compiler-explorer" extension will be documented in this file.
-
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Initial release
+## v0.5.2
+* Add icon by @harikrishnan94 in https://github.com/harikrishnan94/cxx-compiler-explorer/pull/22
+* Show compilation progress by @harikrishnan94 in https://github.com/harikrishnan94/cxx-compiler-explorer/pull/24
+* Better error handling by @harikrishnan94 in https://github.com/harikrishnan94/cxx-compiler-explorer/pull/26
+* Watch Errored files too by @harikrishnan94 in https://github.com/harikrishnan94/cxx-compiler-explorer/pull/27
+* Unload document once the source editor is closed by @harikrishnan94 in https://github.com/harikrishnan94/cxx-compiler-explorer/pull/28
