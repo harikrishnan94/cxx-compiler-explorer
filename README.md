@@ -9,7 +9,7 @@ This extension is based on https://github.com/dseight/vscode-disasexpl (which is
 Run `compilerexplorer.disassOutput` from Command palette.
 Disassembly will be shown in a new column.
 
-Run `compilerexplorer.disassOutputWithExtraArgs` from Command palette to use add extra compile options.
+Run `compilerexplorer.disassOutputWithCustomCommand` from Command palette to use edit compile command.
 
 ## Requirements
 

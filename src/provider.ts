@@ -7,7 +7,7 @@ import { CompilationDatabase, getAsmUri } from "./compdb";
 export interface CompilationInfo {
     srcUri: Uri,
     compdb: CompilationDatabase,
-    extraArgs: string[]
+    customCommand: string[]
 }
 
 export class AsmProvider implements TextDocumentContentProvider {
@@ -35,9 +35,9 @@ export class AsmProvider implements TextDocumentContentProvider {
         return document;
     }
 
-    async loadCompilationInfo(srcUri: Uri, asmUri: Uri, extraArgs: string[]) {
+    async loadCompilationInfo(srcUri: Uri, asmUri: Uri, customCommand: string[]) {
         const compdb = await CompilationDatabase.for(srcUri);
-        this._compinfo.set(asmUri.path, { srcUri, compdb, extraArgs });
+        this._compinfo.set(asmUri.path, { srcUri, compdb, customCommand: customCommand });
     }
 
     unload(srcUri: Uri) {

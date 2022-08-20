@@ -42,7 +42,7 @@ export class AsmDocument {
             const filter = new AsmFilter();
             filter.binary = false;
             try {
-                const asm = await this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.extraArgs);
+                const asm = await this._compinfo.compdb.compile(this._compinfo.srcUri, this._compinfo.customCommand);
                 this.lines = new AsmParser().process(asm, filter).asm;
             } catch (error) {
                 if (error instanceof Error)
