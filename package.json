@@ -4,7 +4,7 @@
     "description": "Show Disassembly output to source relations",
     "publisher": "harikrishnan94",
     "icon": "icons/asm.png",
-    "version": "0.5.2",
+    "version": "0.6.0",
     "author": {
         "email": "harikrishnan.prabakaran@gmail.com",
         "name": "Harikrishnan Prabakaran"
@@ -22,7 +22,7 @@
     ],
     "activationEvents": [
         "onCommand:compilerexplorer.disassOutput",
-        "onCommand:compilerexplorer.disassOutputWithExtraArgs"
+        "onCommand:compilerexplorer.disassOutputWithCustomCommand"
     ],
     "main": "./dist/extension.js",
     "contributes": {
@@ -32,8 +32,8 @@
                 "title": "C++ Compiler Explorer: Disassemble file"
             },
             {
-                "command": "compilerexplorer.disassOutputWithExtraArgs",
-                "title": "C++ Compiler Explorer: Disassemble file with extra args"
+                "command": "compilerexplorer.disassOutputWithCustomCommand",
+                "title": "C++ Compiler Explorer: Disassemble file with custom command"
             }
         ],
         "configuration": [

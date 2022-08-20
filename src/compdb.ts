@@ -1,4 +1,4 @@
-import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation, Progress, CancellationToken } from "vscode";
+import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation, Progress, CancellationToken, commands } from "vscode";
 import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { ChildProcess, spawn } from 'child_process';
@@ -53,7 +53,11 @@ export class CompilationDatabase implements Disposable {
         return compdb;
     }
 
-    async compile(src: Uri, extraArgs: string[]): Promise<string> {
+    get(srcUri: Uri): CompileCommand | undefined {
+        return this.commands.get(srcUri.fsPath);
+    }
+
+    async compile(src: Uri, customCommand: string[]): Promise<string> {
         const ccommand = this.get(src);
         if (!ccommand) throw new Error("cannot find compilation command");
 
@@ -67,7 +71,7 @@ export class CompilationDatabase implements Disposable {
         const asm = await window.withProgress(progressOption,
             async (progress, ctok): Promise<string | Error> => {
                 progress.report({ message: "Compilation in progress" });
-                return await this.runCompiler(ctok, ccommand, extraArgs);
+                return await this.runCompiler(ctok, ccommand, customCommand);
             });
 
         const elapsed = (new Date().getTime() - start) / 1000;
@@ -103,28 +107,17 @@ export class CompilationDatabase implements Disposable {
 
     private static preprocess(commands: CompileCommand[]) {
         for (let ccommand of commands) {
-            if (ccommand.command.length > 0) ccommand.arguments = splitWhitespace(ccommand.command);
+            ccommand.arguments = constructCompileCommand(ccommand.command, ccommand.arguments);
+            ccommand.arguments = ccommand.arguments.filter((arg) => arg != ccommand.file);
             ccommand.command = "";
-
-            let isOutfile = false;
-            ccommand.arguments = ccommand.arguments.filter(arg => {
-                if (!isOutfile) {
-                    isOutfile = arg === "-o";
-                    return isOutfile ? false : arg !== "-c" && arg !== "-g";
-                } else {
-                    isOutfile = false;
-                    return false;
-                }
-            });
-
-            ccommand.arguments.push('-g', '-S', '-o', '-');
         }
     }
 
-    private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, extraArgs: string[]): Promise<string | Error> {
-        const cxxfiltExe = getCxxFiltExe(ccommand.arguments[0]);
-        const command = ccommand.arguments[0];
-        const args = [...ccommand.arguments.slice(1), ...extraArgs];
+    private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, customCommand: string[]): Promise<string | Error> {
+        const compileArguments = customCommand.length != 0 ? customCommand : ccommand.arguments;
+        const cxxfiltExe = getCxxFiltExe(compileArguments[0]);
+        const command = compileArguments[0];
+        const args = [...compileArguments.slice(1), ccommand.file, '-g', '-S', '-o', '-'];
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
@@ -173,14 +166,27 @@ export class CompilationDatabase implements Disposable {
         }).join('\n');
     }
 
-    private get(srcUri: Uri): CompileCommand | undefined {
-        return this.commands.get(srcUri.fsPath);
-    }
-
     dispose() {
         this.commands.clear();
         this.watcher.dispose();
     }
+}
+
+export function constructCompileCommand(command: string, args: string[]): string[] {
+    if (command.length > 0) args = splitWhitespace(command);
+
+    let isOutfile = false;
+    args = args.filter(arg => {
+        if (!isOutfile) {
+            isOutfile = arg === "-o";
+            return isOutfile ? false : arg !== "-c" && arg !== "-g";
+        } else {
+            isOutfile = false;
+            return false;
+        }
+    });
+
+    return args;
 }
 
 export function getAsmUri(srcUri: Uri): Uri {
