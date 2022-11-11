@@ -44,8 +44,8 @@ export class AsmProvider implements TextDocumentContentProvider {
         doc?.updateCompilationInfo(compinfo);
     }
 
-    unload(srcUri: Uri) {
-        const asmUri = getAsmUri(srcUri);
+    unload(srcOrAsmUri: Uri) {
+        const asmUri = getAsmUri(srcOrAsmUri);
         const doc = this._documents.get(asmUri.path);
         doc?.dispose();
         this._documents.delete(asmUri.path);
@@ -59,6 +59,7 @@ export class AsmProvider implements TextDocumentContentProvider {
     }
 
     dispose(): void {
+        this._documents.forEach(doc => doc.dispose());
         this._documents.clear();
         this._onDidChange.dispose();
     }

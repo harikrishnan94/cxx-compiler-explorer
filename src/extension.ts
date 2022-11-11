@@ -28,9 +28,19 @@ export function activate(context: ExtensionContext): void {
             // dirty way to get decorations work after showing disassembly
             setTimeout(() => decorator.updateSelection(srcEditor), 500);
 
-            workspace.onDidCloseTextDocument((d: TextDocument) => {
-                if (d.uri == srcEditor.document.uri) provider.unload(d.uri);
+            // keep reference to documents since editors can change under us
+            const srcDocument = srcEditor.document;
+            const asmDocument = asmEditor.document;
+
+            const disposable = workspace.onDidCloseTextDocument((d: TextDocument) => {
+                if (d === srcDocument || d === asmDocument) {
+                    decorator.dispose();
+                    disposable.dispose();
+                    provider.unload(d.uri);
+                }
             });
+
+            context.subscriptions.push(decorator, disposable);
         } catch (error) {
             if (error instanceof Error)
                 window.showErrorMessage(`Failed to show assembly: ${error.message}`);
