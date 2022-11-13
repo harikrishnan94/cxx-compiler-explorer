@@ -37,11 +37,15 @@ export class AsmProvider implements TextDocumentContentProvider {
 
     async loadCompilationInfo(srcUri: Uri, asmUri: Uri, customCommand: string[]) {
         const compdb = await CompilationDatabase.for(srcUri);
-        this._compinfo.set(asmUri.path, { srcUri, compdb, customCommand: customCommand });
+        const compinfo = { srcUri, compdb, customCommand };
+        this._compinfo.set(asmUri.path, compinfo);
+
+        const doc = this._documents.get(asmUri.path);
+        doc?.updateCompilationInfo(compinfo);
     }
 
-    unload(srcUri: Uri) {
-        const asmUri = getAsmUri(srcUri);
+    unload(srcOrAsmUri: Uri) {
+        const asmUri = getAsmUri(srcOrAsmUri);
         const doc = this._documents.get(asmUri.path);
         doc?.dispose();
         this._documents.delete(asmUri.path);
@@ -55,6 +59,7 @@ export class AsmProvider implements TextDocumentContentProvider {
     }
 
     dispose(): void {
+        this._documents.forEach(doc => doc.dispose());
         this._documents.clear();
         this._onDidChange.dispose();
     }

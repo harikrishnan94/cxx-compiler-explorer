@@ -1,4 +1,4 @@
-import { workspace, Uri, TextDocument, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation, Progress, CancellationToken, commands } from "vscode";
+import { workspace, Uri, OutputChannel, window, FileSystemWatcher, Disposable, ProgressLocation, CancellationToken, CancellationTokenSource } from "vscode";
 import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { ChildProcess, spawn } from 'child_process';
@@ -16,6 +16,7 @@ interface CompileCommand {
 const cxxfiltExe = 'c++filt';
 
 export class CompilationDatabase implements Disposable {
+    private compileCancellationTokenSource?: CancellationTokenSource = undefined;
     private compileCommandsFile: Uri;
     private commands: Map<string, CompileCommand>;
     private watcher: FileSystemWatcher;
@@ -61,25 +62,37 @@ export class CompilationDatabase implements Disposable {
         const ccommand = this.get(src);
         if (!ccommand) throw new Error("cannot find compilation command");
 
-        const start = new Date().getTime();
+        // cancel possible previous compilation
+        this.compileCancellationTokenSource?.cancel();
 
-        const progressOption = {
-            location: ProgressLocation.Notification,
-            title: "C++ Compiler Explorer",
-            cancellable: true
+        const ctokSource = new CancellationTokenSource();
+        this.compileCancellationTokenSource = ctokSource;
+
+        try {
+            const start = new Date().getTime();
+
+            const progressOption = {
+                location: ProgressLocation.Notification,
+                title: "C++ Compiler Explorer",
+                cancellable: true
+            };
+
+            const asm = await window.withProgress(progressOption,
+                async (progress, ctok) => {
+                    progress.report({ message: "Compilation in progress" });
+    
+                    ctok.onCancellationRequested(() => ctokSource.cancel());
+    
+                    return await this.runCompiler(ctokSource.token, ccommand, customCommand);
+                });
+    
+            const elapsed = (new Date().getTime() - start) / 1000;
+            getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} bytes, ${elapsed} s`);
+    
+            return asm;
+        } finally {
+            this.compileCancellationTokenSource = undefined;
         }
-        const asm = await window.withProgress(progressOption,
-            async (progress, ctok): Promise<string | Error> => {
-                progress.report({ message: "Compilation in progress" });
-                return await this.runCompiler(ctok, ccommand, customCommand);
-            });
-
-        const elapsed = (new Date().getTime() - start) / 1000;
-        if (asm instanceof Error) throw asm;
-
-        getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} bytes, ${elapsed} s`);
-
-        return asm;
     }
 
     static disposable(): Disposable {
@@ -113,7 +126,7 @@ export class CompilationDatabase implements Disposable {
         }
     }
 
-    private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, customCommand: string[]): Promise<string | Error> {
+    private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, customCommand: string[]): Promise<string> {
         const compileArguments = customCommand.length != 0 ? customCommand : ccommand.arguments;
         const cxxfiltExe = getCxxFiltExe(compileArguments[0]);
         const command = compileArguments[0];
@@ -143,30 +156,38 @@ export class CompilationDatabase implements Disposable {
         const cxx = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         const cxxfilt = spawn(cxxfiltExe, [], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-        cxxfilt.stdin.cork();
-        for await (let chunk of cxx.stdout!) {
-            if (ctok.isCancellationRequested) return Error("operation cancelled");
-            cxxfilt.stdin.write(chunk);
+        try {
+            cxxfilt.stdin.cork();
+            for await (let chunk of cxx.stdout!) {
+                if (ctok.isCancellationRequested) throw new Error("operation cancelled");
+                cxxfilt.stdin.write(chunk);
+            }
+            cxxfilt.stdin.uncork();
+            cxxfilt.stdin.end();
+
+            if (!await checkStdErr(cxx)) throw new Error("compilation failed");
+
+            let asm = ""
+            for await (let chunk of cxxfilt.stdout!) {
+                if (ctok.isCancellationRequested) throw new Error("operation cancelled");
+                asm += chunk;
+            }
+            if (!await checkStdErr(cxxfilt)) throw new Error("compilation failed");
+
+            return splitLines(asm).filter((line) => {
+                line = line.trimStart();
+                return !line.startsWith('#') && !line.startsWith(';')
+            }).join('\n');
+        } catch (e) {
+            cxx.kill();
+            cxxfilt.kill();
+            throw e;
         }
-        cxxfilt.stdin.uncork();
-        cxxfilt.stdin.end();
-
-        if (!await checkStdErr(cxx)) return Error("compilation failed");
-
-        let asm = ""
-        for await (let chunk of cxxfilt.stdout!) {
-            if (ctok.isCancellationRequested) return Error("operation cancelled");
-            asm += chunk;
-        }
-        if (!await checkStdErr(cxxfilt)) return Error("compilation failed");
-
-        return splitLines(asm).filter((line) => {
-            line = line.trimStart();
-            return !line.startsWith('#') && !line.startsWith(';')
-        }).join('\n');
     }
 
     dispose() {
+        this.compileCancellationTokenSource?.cancel();
+        this.compileCancellationTokenSource?.dispose();
         this.commands.clear();
         this.watcher.dispose();
     }

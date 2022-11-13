@@ -30,6 +30,11 @@ export class AsmDocument {
         this.update(false);
     }
 
+    updateCompilationInfo(compinfo: CompilationInfo) {
+        this._compinfo = compinfo;
+        this.update(false);
+    }
+
     private updateLater(deleted: boolean = false) {
         // Workarond for https://github.com/Microsoft/vscode/issues/72831
         setTimeout(async () => await this.update(deleted), 100);

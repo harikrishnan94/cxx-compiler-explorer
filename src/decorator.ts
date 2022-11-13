@@ -15,6 +15,7 @@ export class AsmDecorator {
     private unusedLineDecorationType: TextEditorDecorationType;
     private registrations: Disposable;
     private document!: AsmDocument;
+    private visible: boolean = false;
 
     // mappings from source lines to assembly lines
     private mappings = new Map<number, number[]>();
@@ -23,6 +24,7 @@ export class AsmDecorator {
         this.srcEditor = srcEditor;
         this.asmEditor = asmEditor;
         this.provider = provider;
+        this.visible = window.visibleTextEditors.includes(srcEditor) && window.visibleTextEditors.includes(asmEditor);
 
         this.selectedLineDecorationType = window.createTextEditorDecorationType({
             isWholeLine: true,
@@ -51,10 +53,15 @@ export class AsmDecorator {
                 this.updateSelection(e.textEditor);
             }),
             window.onDidChangeVisibleTextEditors(editors => {
+                // documents can be moved to new editors, so we need to keep track when they change
+                const srcEditor = editors.find(editor => editor.document === this.srcEditor.document);
+                const asmEditor = editors.find(editor => editor.document === this.asmEditor.document);
+                this.srcEditor = srcEditor || this.srcEditor;
+                this.asmEditor = asmEditor || this.asmEditor;
+
                 // decorations are useless if one of editors become invisible
-                if (editors.indexOf(srcEditor) === -1 || editors.indexOf(asmEditor) === -1) {
-                    this.dispose();
-                }
+                const visible = srcEditor !== undefined && asmEditor !== undefined;
+                this.updateVisibility(uri, visible);
             })
         );
     }
@@ -70,7 +77,7 @@ export class AsmDecorator {
         const dimUnused = workspace.getConfiguration('', this.srcEditor.document.uri)
             .get('compilerexplorer.dimUnusedSourceLines', true);
 
-        if (dimUnused) {
+        if (dimUnused && this.visible) {
             this.dimUnusedSourceLines();
         }
     }
@@ -114,6 +121,23 @@ export class AsmDecorator {
             this.srcLineSelected(this.srcEditor.selection.start.line);
         } else if (editor === this.asmEditor) {
             this.asmLineSelected(this.asmEditor.selection.start.line);
+        }
+    }
+
+    private updateVisibility(uri: Uri, visible: boolean) {
+        if (visible === this.visible) {
+            return;
+        }
+
+        this.visible = visible;
+
+        if (visible) {
+            this.load(uri);
+        } else {
+            // clear all decorations while both editors are not visible
+            this.asmEditor.setDecorations(this.selectedLineDecorationType, []);
+            this.srcEditor.setDecorations(this.selectedLineDecorationType, []);
+            this.srcEditor.setDecorations(this.unusedLineDecorationType, []);
         }
     }
 
