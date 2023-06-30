@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.7.1
+* Make use of the 'directory' property as specified in the JSON compilation database format specification by @dprogm in #36
+
 ## v0.7.0
 * Unload document once the source editor is closed by @harikrishnan94 in #28
 * Update changelog by @harikrishnan94 in #29
