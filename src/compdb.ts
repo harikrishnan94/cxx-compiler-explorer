@@ -80,15 +80,11 @@ export class CompilationDatabase implements Disposable {
             const asm = await window.withProgress(progressOption,
                 async (progress, ctok) => {
                     progress.report({ message: "Compilation in progress" });
-
                     ctok.onCancellationRequested(() => ctokSource.cancel());
-
                     return await this.runCompiler(ctokSource.token, ccommand, customCommand);
                 });
-
             const elapsed = (new Date().getTime() - start) / 1000;
             getOutputChannel().appendLine(`Compilation succeeded: ${asm.length} bytes, ${elapsed} s`);
-
             return asm;
         } finally {
             this.compileCancellationTokenSource = undefined;
@@ -154,7 +150,7 @@ export class CompilationDatabase implements Disposable {
         };
 
         let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'] }
-        if(existsSync(ccommand.directory)) {
+        if (existsSync(ccommand.directory)) {
             commandOptions.cwd = ccommand.directory;
         }
         const cxx = spawn(command, args, commandOptions);
