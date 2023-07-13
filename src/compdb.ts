@@ -3,7 +3,7 @@ import * as Path from "path";
 import { AsmProvider } from "./provider";
 import { SpawnOptionsWithStdioTuple, StdioPipe, StdioNull, ChildProcess, spawn } from 'child_process';
 import { TextDecoder } from "util";
-import { existsSync } from "fs";
+import { existsSync, promises as fs } from "fs";
 import { splitLines } from "./utils";
 
 interface CompileCommand {
@@ -19,6 +19,7 @@ export class CompilationDatabase implements Disposable {
     private compileCancellationTokenSource?: CancellationTokenSource = undefined;
     private compileCommandsFile: Uri;
     private commands: Map<string, CompileCommand>;
+    private cxxFiltExeCache: Map<string, string> = new Map();
     private watcher: FileSystemWatcher;
 
     private static compdbs: Map<Uri, CompilationDatabase> = new Map();
@@ -124,30 +125,11 @@ export class CompilationDatabase implements Disposable {
 
     private async runCompiler(ctok: CancellationToken, ccommand: CompileCommand, customCommand: string[]): Promise<string> {
         const compileArguments = customCommand.length != 0 ? customCommand : ccommand.arguments;
-        const cxxfiltExe = getCxxFiltExe(compileArguments[0]);
+        const cxxfiltExe = await this.getCxxFiltExe(compileArguments[0]);
         const command = compileArguments[0];
         const args = [...compileArguments.slice(1), ccommand.file, '-g', '-S', '-o', '-'];
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
-
-        const checkStdErr = async (process: ChildProcess) => {
-            let stderr = "";
-            for await (let chunk of process.stderr!) {
-                stderr += chunk;
-            }
-            if (stderr.length > 0) {
-                getOutputChannel().appendLine(stderr);
-                getOutputChannel().show();
-            }
-
-            try {
-                if (await onExit(process)) return false;
-            } catch (e) {
-                return false;
-            }
-
-            return true;
-        };
 
         let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'] }
         if (existsSync(ccommand.directory)) {
@@ -165,14 +147,14 @@ export class CompilationDatabase implements Disposable {
             cxxfilt.stdin.uncork();
             cxxfilt.stdin.end();
 
-            if (!await checkStdErr(cxx)) throw new Error("compilation failed");
+            if (!await this.checkStdErr(cxx)) throw new Error("compilation failed");
 
             let asm = ""
             for await (let chunk of cxxfilt.stdout!) {
                 if (ctok.isCancellationRequested) throw new Error("operation cancelled");
                 asm += chunk;
             }
-            if (!await checkStdErr(cxxfilt)) throw new Error("compilation failed");
+            if (!await this.checkStdErr(cxxfilt)) throw new Error("compilation failed");
 
             return splitLines(asm).filter((line) => {
                 line = line.trimStart();
@@ -183,6 +165,98 @@ export class CompilationDatabase implements Disposable {
             cxxfilt.kill();
             throw e;
         }
+    }
+
+    private async getCxxFiltExe(compExe: string): Promise<string> {
+        let cxxfiltExe = this.cxxFiltExeCache.get(compExe)
+        if (cxxfiltExe !== undefined)
+            return cxxfiltExe;
+
+        cxxfiltExe = await this.findCxxFiltExe(compExe);
+        this.cxxFiltExeCache.set(compExe, cxxfiltExe);
+
+        return cxxfiltExe;
+    }
+
+    private async findCxxFiltExe(compExe: string): Promise<string> {
+        let parsed = Path.parse(compExe)
+        let findExePath = async (dir: string | undefined) => {
+            if (dir !== undefined) {
+                const cxxfiltNameWithExt = cxxfiltExe + parsed.ext;
+                for (let file of await fs.readdir(dir)) {
+                    if (file.endsWith(cxxfiltNameWithExt)) {
+                        return Path.resolve(dir, file);
+                    }
+                }
+            }
+
+            return undefined;
+        };
+
+        // Use PATH or base dir of compiler to find c++filt executable
+        if (parsed.dir.length == 0) {
+            // Compiler base path is empty, so check expand in PATH.
+            const compExeDir = await this.findExecutablePath(compExe);
+            const cxxfilt = await findExePath(compExeDir);
+            if (cxxfilt !== undefined) {
+                return cxxfilt;
+            }
+        } else {
+            // Use the path in which the compiler is installed.
+            const compExeDir = parsed.dir;
+            const cxxfilt = await findExePath(compExeDir);
+            if (cxxfilt !== undefined) {
+                return cxxfilt;
+            }
+        }
+
+        // Else guess the path and hope it turns useful.
+        parsed.name = parsed.name.replace('clang++', cxxfiltExe)
+            .replace('clang', cxxfiltExe)
+            .replace('g++', cxxfiltExe)
+            .replace('gcc', cxxfiltExe)
+            .replace('c++', cxxfiltExe)
+            .replace('cc', cxxfiltExe);
+
+        const cxxfilt = Path.join(parsed.dir, parsed.name, parsed.ext);
+        if (!existsSync(cxxfilt)) return cxxfiltExe;
+
+        return cxxfilt;
+    }
+
+    private async findExecutablePath(exe: string): Promise<string | undefined> {
+        let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull> = { stdio: ['ignore', 'pipe', 'ignore'] }
+        const which = spawn("which", [exe], commandOptions);
+
+        try {
+            let resolvedPath = "";
+            for await (let chunk of which.stdout!) {
+                resolvedPath += chunk.toString();
+            }
+            if (!await this.checkStdErr(which)) return Path.parse(resolvedPath).dir;
+        } catch (e) {
+            which.kill();
+        }
+        return undefined;
+    }
+
+    private async checkStdErr(process: ChildProcess) {
+        let stderr = "";
+        for await (let chunk of process.stderr!) {
+            stderr += chunk;
+        }
+        if (stderr.length > 0) {
+            getOutputChannel().appendLine(stderr);
+            getOutputChannel().show();
+        }
+
+        try {
+            if (await onExit(process)) return false;
+        } catch (e) {
+            return false;
+        }
+
+        return true;
     }
 
     dispose() {
@@ -271,19 +345,6 @@ export function getOutputChannel(): OutputChannel {
     if (outputChannel === undefined)
         outputChannel = window.createOutputChannel("C/C++ Compiler Explorer", "shellscript");
     return outputChannel;
-}
-
-function getCxxFiltExe(compExe: string): string {
-    let parsed = Path.parse(compExe)
-    parsed.name = parsed.name.replace('clang++', cxxfiltExe)
-        .replace('clang', cxxfiltExe)
-        .replace('g++', cxxfiltExe)
-        .replace('gcc', cxxfiltExe);
-
-    const cxxfilt = Path.join(parsed.dir, parsed.name, parsed.ext);
-    if (!existsSync(cxxfilt)) return cxxfiltExe;
-
-    return cxxfilt;
 }
 
 async function onExit(childProcess: ChildProcess): Promise<number> {
