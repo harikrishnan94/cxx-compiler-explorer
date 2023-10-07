@@ -131,7 +131,7 @@ export class CompilationDatabase implements Disposable {
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
-        let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'] }
+        let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'], shell: true }
         if (existsSync(ccommand.directory)) {
             commandOptions.cwd = ccommand.directory;
         }
@@ -366,40 +366,50 @@ function splitWhitespace(str: string): string[] {
     let i = 0;
     let strStart = 0;
     for (let ch of str) {
-        switch (ch) {
-            case '\\':
-                shouldEscape = !shouldEscape;
-                break;
-
-            case '\'':
-                if (!shouldEscape) {
-                    if (quoteChar == '\'') quoteChar = undefined;
-                    else quoteChar = '\'';
+        if (ch === '\\') {
+            // Catch the escape char in the first place!
+            // Either the last char was the escape char
+            // then reset or the last char was not the
+            // escape char then enable escaping for the
+            // next char.
+            shouldEscape = !shouldEscape;
+        } else {
+            switch (ch) {
+                case '\'':
+                case '\"': {
+                    if (!shouldEscape) {
+                        if (quoteChar === ch) {
+                            quoteChar = undefined;
+                        } else {
+                            quoteChar = ch;
+                        }
+                    }
+                    break;
                 }
-                break;
-            case '"':
-                if (!shouldEscape) {
-                    if (quoteChar == '"') quoteChar = undefined;
-                    else quoteChar = '"';
+                case ' ': {
+                    if (!quoteChar) {
+                        const slice = str.slice(strStart, i);
+                        if (slice.length > 0) {
+                            strs.push(slice);
+                        }
+                        strStart = i + 1;
+                    }
+                    break;
                 }
-                break;
-
-            case ' ':
-                if (!quoteChar) {
-                    const slice = str.slice(strStart, i);
-                    if (slice.length > 0) strs.push(slice);
-                    strStart = i + 1;
-                }
-
-            default:
-                break;
+                default:
+                    break;
+            }
+            // Always reset the flag if it is not the escape char
+            // because escaping should only apply to the next char
+            // that follows the escape char.
+            shouldEscape &&= !shouldEscape;
         }
-
         i++;
     }
 
     const slice = str.slice(strStart, i);
-    if (slice.length > 0) strs.push(slice);
-
+    if (slice.length > 0) {
+        strs.push(slice);
+    }
     return strs;
 }
