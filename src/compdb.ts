@@ -109,7 +109,11 @@ export class CompilationDatabase implements Disposable {
 
         let ccommands = new Map<string, CompileCommand>();
         for (let command of commands) {
-            ccommands.set(command.file, command);
+            let filePath = command.file;
+            if(!Path.isAbsolute(filePath)) {
+                filePath = await fs.realpath(Path.join(command.directory, command.file));
+            }
+            ccommands.set(filePath, command);
         }
 
         return ccommands;
@@ -268,7 +272,7 @@ export class CompilationDatabase implements Disposable {
 }
 
 export function constructCompileCommand(command: string, args: string[]): string[] {
-    if (command.length > 0) args = splitWhitespace(command);
+    if (command && command.length > 0) args = splitWhitespace(command);
 
     let isOutfile = false;
     args = args.filter(arg => {
