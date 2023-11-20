@@ -5,6 +5,7 @@ import { SpawnOptionsWithStdioTuple, StdioPipe, StdioNull, ChildProcess, spawn }
 import { TextDecoder } from "util";
 import { existsSync, promises as fs } from "fs";
 import { splitLines } from "./utils";
+import * as api from 'vscode-cmake-tools';
 
 interface CompileCommand {
     directory: string,
@@ -20,13 +21,37 @@ export class CompilationDatabase implements Disposable {
     private compileCommandsFile: Uri;
     private commands: Map<string, CompileCommand>;
     private cxxFiltExeCache: Map<string, string> = new Map();
-    private watcher: FileSystemWatcher;
+    private watcher: FileSystemWatcher|undefined;
+    private projectChange: Disposable|undefined;
+    private codeModelChange: Disposable|undefined;
+    private cmakeTools: api.CMakeToolsApi|undefined;
+    private project: api.Project|undefined;
 
     private static compdbs: Map<Uri, CompilationDatabase> = new Map();
 
     constructor(compileCommandsFile: Uri, commands: Map<string, CompileCommand>) {
         this.compileCommandsFile = compileCommandsFile;
         this.commands = commands;
+
+        if (commands.size === 0) {
+            let cmakeTools = api.getCMakeToolsApi(api.Version.v1);
+            if (cmakeTools === undefined)
+                return;
+            cmakeTools.then(api => {
+                this.cmakeTools = api;
+                if (this.cmakeTools === undefined)
+                    return;
+
+                this.projectChange = this.cmakeTools.onActiveProjectChanged(
+                    this.onActiveProjectChanged, this);
+                if (workspace.workspaceFolders !== undefined) {
+                    const projectUri = workspace.workspaceFolders[0].uri;
+                    this.onActiveProjectChanged(projectUri);
+                }
+            });
+            return;
+        }
+
         this.watcher = workspace.createFileSystemWatcher(this.compileCommandsFile.path);
 
         const load = async () => {
@@ -47,10 +72,16 @@ export class CompilationDatabase implements Disposable {
         let compdb = CompilationDatabase.compdbs.get(compileCommandsFile);
         if (compdb) return compdb;
 
-        const commands = await CompilationDatabase.load(compileCommandsFile);
-
-        compdb = new CompilationDatabase(compileCommandsFile, commands);
-        this.compdbs.set(compileCommandsFile, compdb);
+        try {
+            const commands = await CompilationDatabase.load(compileCommandsFile);
+            if (commands.size == 0) throw new Error('compile_commands.json is empty');
+    
+            compdb = new CompilationDatabase(compileCommandsFile, commands);
+            this.compdbs.set(compileCommandsFile, compdb);
+        } catch (e) {
+            compdb = new CompilationDatabase(compileCommandsFile, new Map);
+            this.compdbs.set(compileCommandsFile, compdb);
+        }
 
         return compdb;
     }
@@ -263,11 +294,106 @@ export class CompilationDatabase implements Disposable {
         return true;
     }
 
+    private async onActiveProjectChanged(path: Uri | undefined) {
+        if (this.codeModelChange !== undefined) {
+            this.codeModelChange.dispose();
+            this.codeModelChange = undefined;
+        }
+
+        if (path === undefined)
+            return;
+
+        this.cmakeTools?.getProject(path).then(project => {
+            this.project = project;
+            this.codeModelChange =
+                this.project?.onCodeModelChanged(this.onCodeModelChanged, this);
+            this.onCodeModelChanged().then(() => {
+                if (this.commands.size === 0)
+                    throw new Error('CMakeTools: No compile commands found');
+            })
+        });
+    }
+
+    private async onCodeModelChanged() {
+        const content = this.project?.codeModel;
+        if (content === undefined)
+            return;
+
+        if (content.toolchains === undefined)
+            return;
+
+        content.configurations.forEach(configuration => {
+            configuration.projects.forEach(project => {
+                let sourceDirectory = project.sourceDirectory;
+                project.targets.forEach(target => {
+                    if (target.sourceDirectory !== undefined)
+                        sourceDirectory = target.sourceDirectory;
+
+                    let commandLine: string[] = [];
+                    target.fileGroups?.forEach(fileGroup => {
+                        if (fileGroup.language === undefined)
+                            return;
+
+                        const compiler = content.toolchains?.get(fileGroup.language);
+                        if (compiler === undefined)
+                            return;
+
+                        commandLine.push(compiler.path);
+
+                        fileGroup.compileCommandFragments?.forEach(commands => {
+                            commands.split(/\s/g).forEach(
+                                command => { commandLine.push(command); });
+                        });
+
+                        let compilerName =
+                            compiler.path.substring(compiler.path.lastIndexOf(Path.sep) + 1)
+                                .toLowerCase();
+                        if (compilerName.endsWith('.exe'))
+                            compilerName = compilerName.substring(0, compilerName.length - 4);
+
+                        const isMsvc = compilerName === 'cl' || compilerName === 'clang-cl';
+
+                        const defFlag = isMsvc ? '/D' : '-D';
+                        fileGroup.defines?.forEach(
+                            define => { commandLine.push(`${defFlag}${define}`); });
+
+                        const incFlag = isMsvc ? '/I' : '-I';
+                        fileGroup.includePath?.forEach(
+                            include => { commandLine.push(`${incFlag}${include.path}`); });
+
+                        const isClang = compilerName.includes("clang");
+                        if (isClang) {
+                            if (target.sysroot !== undefined)
+                                commandLine.push(`--sysroot=${target.sysroot}`);
+                            if (compiler.target !== undefined)
+                                commandLine.push(`--target=${compiler.target}`);
+                        }
+
+                        fileGroup.sources.forEach(source => {
+                            const file = sourceDirectory.length != 0
+                                ? sourceDirectory + Path.sep + source
+                                : source;
+                            const command: CompileCommand = {
+                                directory: sourceDirectory,
+                                command: compiler.path,
+                                file: file,
+                                arguments: commandLine
+                            };
+                            this.commands.set(file, command);
+                        });
+                    });
+                });
+            });
+        });
+    }
+
     dispose() {
         this.compileCancellationTokenSource?.cancel();
         this.compileCancellationTokenSource?.dispose();
         this.commands.clear();
-        this.watcher.dispose();
+        this.watcher?.dispose();
+        this.projectChange?.dispose();
+        this.codeModelChange?.dispose();
     }
 }
 
