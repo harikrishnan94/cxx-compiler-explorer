@@ -131,7 +131,8 @@ export class CompilationDatabase implements Disposable {
         const compileArguments = customCommand.length != 0 ? customCommand : ccommand.arguments;
         const cxxfiltExe = await this.getCxxFiltExe(compileArguments[0]);
         const command = compileArguments[0];
-        const args = [...compileArguments.slice(1), ccommand.file, '-g', '-S', '-o', '-'];
+        const asmArgs = workspace.getConfiguration('compilerexplorer').get<string[]>('compilerArguments', ['-g', '-S', '-o', '-']);
+        const args = [...compileArguments.slice(1), ccommand.file, ...asmArgs];
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
