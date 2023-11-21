@@ -111,7 +111,11 @@ export class CompilationDatabase implements Disposable {
         for (let command of commands) {
             let filePath = command.file;
             if(!Path.isAbsolute(filePath)) {
-                filePath = await fs.realpath(Path.join(command.directory, command.file));
+                try {
+                    filePath = await fs.realpath(Path.join(command.directory, command.file));
+                } catch(err) {
+                    getOutputChannel().appendLine(`Cannot resolve relative file path: ${err}`);
+                }
             }
             ccommands.set(filePath, command);
         }
