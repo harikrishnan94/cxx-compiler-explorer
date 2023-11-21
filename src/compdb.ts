@@ -139,7 +139,7 @@ export class CompilationDatabase implements Disposable {
 
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
-        let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'], shell: true }
+        let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'] }
         if (existsSync(ccommand.directory)) {
             commandOptions.cwd = ccommand.directory;
         }
