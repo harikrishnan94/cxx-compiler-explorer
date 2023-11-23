@@ -51,6 +51,20 @@
                         "default": true,
                         "description": "Dim the lines that was thrown away by compiler",
                         "scope": "resource"
+                    },
+                    "compilerexplorer.compilerArguments": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [
+                            "-g",
+                            "-S",
+                            "-o",
+                            "-"
+                        ],
+                        "description": "Compiler arguments to get assembly listing",
+                        "scope": "resource"
                     }
                 }
             }
