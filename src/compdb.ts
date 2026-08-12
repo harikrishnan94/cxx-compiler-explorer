@@ -67,7 +67,7 @@ export class CompilationDatabase implements Disposable {
     static async for(srcUri: Uri): Promise<CompilationDatabase> {
         const buildDirectory = resolvePath(workspace.getConfiguration('compilerexplorer')
             .get<string>('compilationDirectory', '${workspaceFolder}'), srcUri);
-        const compileCommandsFile = Uri.joinPath(Uri.parse(buildDirectory), 'compile_commands.json');
+        const compileCommandsFile = Uri.joinPath(buildDirectory, 'compile_commands.json');
 
         let compdb = CompilationDatabase.compdbs.get(compileCommandsFile);
         if (compdb) return compdb;
@@ -75,7 +75,7 @@ export class CompilationDatabase implements Disposable {
         try {
             const commands = await CompilationDatabase.load(compileCommandsFile);
             if (commands.size == 0) throw new Error('compile_commands.json is empty');
-    
+
             compdb = new CompilationDatabase(compileCommandsFile, commands);
             this.compdbs.set(compileCommandsFile, compdb);
         } catch (e) {
@@ -148,7 +148,9 @@ export class CompilationDatabase implements Disposable {
                     getOutputChannel().appendLine(`Cannot resolve relative file path: ${err}`);
                 }
             }
-            ccommands.set(filePath, command);
+            // On Windows, compile_commands file path are incompatible with what vscode provides, so normalize it with a Uri
+            let normalized = Uri.file(filePath);
+            ccommands.set(normalized.fsPath, command);
         }
 
         return ccommands;
@@ -166,7 +168,7 @@ export class CompilationDatabase implements Disposable {
         const compileArguments = customCommand.length != 0 ? customCommand : ccommand.arguments;
         const cxxfiltExe = await this.getCxxFiltExe(compileArguments[0]);
         const command = compileArguments[0];
-        const args = [...compileArguments.slice(1), ccommand.file, '-g', '-S', '-o', '-'];
+        const args = [...compileArguments.slice(1), '-g', '-S', '-o', '-'];
 
         const intelSyntax = workspace.getConfiguration('compilerexplorer').get<boolean>('intelSyntax', false);
         if (intelSyntax) {
@@ -425,12 +427,9 @@ export function constructCompileCommand(command: string, args: string[]): string
 
 export function getAsmUri(srcUri: Uri): Uri {
     // by default just replace file extension with '.S'
-    const asmUri = srcUri.with({
-        scheme: AsmProvider.scheme,
-        path: pathWithoutExtension(srcUri.path) + ".S",
-    });
-
-    return asmUri;
+    const newPath = pathWithoutExtension(srcUri.fsPath) + ".S";
+    // Make a new Uri to normalize the path
+    return Uri.file(newPath).with({ scheme: AsmProvider.scheme });
 }
 
 /**
@@ -442,7 +441,7 @@ function pathWithoutExtension(path: string): string {
 
 // Resolve path with almost all variable substitution that supported in
 // Debugging and Task configuration files
-function resolvePath(path: string, srcUri: Uri): string {
+function resolvePath(path: string, srcUri: Uri): Uri {
     const workspacePath = workspace.getWorkspaceFolder(srcUri)?.uri.fsPath!;
 
     const variables: Record<string, string> = {
@@ -476,7 +475,8 @@ function resolvePath(path: string, srcUri: Uri): string {
     );
 
     // normalize a path, reducing '..' and '.' parts
-    return Path.normalize(resolvedPath);
+    // Wrap in a Uri so that the path is correctly normalized on Windows
+    return Uri.file(Path.normalize(resolvedPath));
 }
 
 let outputChannel: OutputChannel | undefined = undefined;
