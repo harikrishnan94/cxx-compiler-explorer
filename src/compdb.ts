@@ -168,6 +168,11 @@ export class CompilationDatabase implements Disposable {
         const command = compileArguments[0];
         const args = [...compileArguments.slice(1), ccommand.file, '-g', '-S', '-o', '-'];
 
+        const intelSyntax = workspace.getConfiguration('compilerexplorer').get<boolean>('intelSyntax', false);
+        if (intelSyntax) {
+            args.push('-masm=intel');
+        }
+
         getOutputChannel().appendLine(`Compiling using: ${command} ${args.join(' ')}`);
 
         let commandOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = { stdio: ['ignore', 'pipe', 'pipe'] }

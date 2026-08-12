@@ -14,3 +14,11 @@ Run `compilerexplorer.disassOutputWithCustomCommand` from Command palette to use
 ## Requirements
 
 `compilerexplorer.compilationDirectory` must point to location of build directory containing compile commands.
+
+## Settings
+
+`compilerexplorer.compilationDirectory`: See Requirements.
+
+`compilerexplorer.dimUnusedSourceLines`: Dim the lines that was thrown away by compiler.
+
+`compilerexplorer.intelSyntax`: Whether to use Intel syntax for the disassembly.
