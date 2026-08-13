@@ -159,7 +159,6 @@ export class CompilationDatabase implements Disposable {
     private static preprocess(commands: CompileCommand[]) {
         for (let ccommand of commands) {
             ccommand.arguments = constructCompileCommand(ccommand.command, ccommand.arguments);
-            ccommand.arguments = ccommand.arguments.filter((arg) => arg != ccommand.file);
             ccommand.command = "";
         }
     }
@@ -408,7 +407,11 @@ export class CompilationDatabase implements Disposable {
     }
 }
 
+/**
+ * Removes the `-o <outfile>`, `-c` and `-g` arguments.
+ */
 export function constructCompileCommand(command: string, args: string[]): string[] {
+    // The compilation database have either a command or an arguments field (or both).
     if (command && command.length > 0) args = splitWhitespace(command);
 
     let isOutfile = false;
