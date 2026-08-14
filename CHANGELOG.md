@@ -1,5 +1,12 @@
 # Change Log
 
+## v0.8.1
+
+### Fixes
+* Fix the "no input file" regression on Linux introduced by the 0.8.0 Windows path handling changes. The source file is now matched by normalized path instead of exact string, so it is no longer dropped from the compile command when compile_commands.json spells it differently in `arguments` than in `file` (#64), by @Stovent in #65
+
+Thanks to @Stovent for the contribution in this release.
+
 ## v0.8.0
 
 ### Features
