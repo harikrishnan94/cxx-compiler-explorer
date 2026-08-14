@@ -158,7 +158,7 @@ export class CompilationDatabase implements Disposable {
 
     private static preprocess(commands: CompileCommand[]) {
         for (let ccommand of commands) {
-            ccommand.arguments = constructCompileCommand(ccommand.command, ccommand.arguments);
+            ccommand.arguments = constructCompileCommand(ccommand.command, ccommand.arguments, ccommand.file);
             ccommand.command = "";
         }
     }
@@ -167,7 +167,7 @@ export class CompilationDatabase implements Disposable {
         const compileArguments = customCommand.length != 0 ? customCommand : ccommand.arguments;
         const cxxfiltExe = await this.getCxxFiltExe(compileArguments[0]);
         const command = compileArguments[0];
-        const args = [...compileArguments.slice(1), '-g', '-S', '-o', '-'];
+        const args = [...compileArguments.slice(1), ccommand.file, '-g', '-S', '-o', '-'];
 
         const intelSyntax = workspace.getConfiguration('compilerexplorer').get<boolean>('intelSyntax', false);
         if (intelSyntax) {
@@ -410,12 +410,15 @@ export class CompilationDatabase implements Disposable {
 /**
  * Removes the `-o <outfile>`, `-c` and `-g` arguments.
  */
-export function constructCompileCommand(command: string, args: string[]): string[] {
+export function constructCompileCommand(command: string, args: string[], inputFile: string): string[] {
     // The compilation database have either a command or an arguments field (or both).
     if (command && command.length > 0) args = splitWhitespace(command);
 
     let isOutfile = false;
     args = args.filter(arg => {
+        if (isCommandInputFile(arg, inputFile)) {
+            return false;
+        }
         if (!isOutfile) {
             isOutfile = arg === "-o";
             return isOutfile ? false : arg !== "-c" && arg !== "-g";
@@ -433,6 +436,13 @@ export function getAsmUri(srcUri: Uri): Uri {
     const newPath = pathWithoutExtension(srcUri.fsPath) + ".S";
     // Make a new Uri to normalize the path
     return Uri.file(newPath).with({ scheme: AsmProvider.scheme });
+}
+
+/**
+ * Checks whether the argument is the source code input of the command.
+ */
+function isCommandInputFile(argument: string, inputFile: string): boolean {
+    return Uri.file(argument).fsPath === Uri.file(inputFile).fsPath;
 }
 
 /**

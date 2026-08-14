@@ -63,7 +63,7 @@ export function activate(context: ExtensionContext): void {
                     prompt: "Provide arguments to pass to compiler",
                     value: ccommand?.arguments.join(" ")
                 });
-            await showDisassembly(srcEditor, constructCompileCommand(command ? command : "", []));
+            await showDisassembly(srcEditor, constructCompileCommand(command ? command : "", [], ccommand ? ccommand.file : ""));
         });
 
     context.subscriptions.push(
